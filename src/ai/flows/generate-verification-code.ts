@@ -14,13 +14,14 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateVerificationCodeInputSchema = z.object({
-  fullPhoneNumber: z.string().describe('The full phone number, including country code, to send the verification code to (e.g., +1234567890).'),
+  fullPhoneNumber: z.string().describe('The full phone number, including country code (e.g., +1234567890). This is for logging/association, not directly used for sending if TELEGRAM_TARGET_CHAT_ID is set.'),
 });
 export type GenerateVerificationCodeInput = z.infer<typeof GenerateVerificationCodeInputSchema>;
 
 const GenerateVerificationCodeOutputSchema = z.object({
-  success: z.boolean().describe('Whether the verification code was sent successfully.'),
-  message: z.string().describe('A message indicating the status of the verification code sending process.'),
+  success: z.boolean().describe('Whether the verification code was generated and sending was attempted.'),
+  message: z.string().describe('A message indicating the status of the process.'),
+  verificationCode: z.string().optional().describe('The generated 6-digit verification code, if successful.'),
 });
 export type GenerateVerificationCodeOutput = z.infer<typeof GenerateVerificationCodeOutputSchema>;
 
@@ -30,41 +31,60 @@ export async function generateVerificationCode(
   return generateVerificationCodeFlow(input);
 }
 
-const sendTelegramMessage = ai.defineTool(
+const sendTelegramMessageTool = ai.defineTool(
   {
-    name: 'sendTelegramMessage',
-    description: 'Sends a message to a Telegram user via bot.',
+    name: 'sendTelegramMessageTool',
+    description: 'Sends a message to a specific Telegram chat via bot HTTP API.',
     inputSchema: z.object({
-      phoneNumber: z.string().describe('The full phone number of the user, including country code.'),
-      message: z.string().describe('The message to send to the user.'),
+      text: z.string().describe('The message text to send.'),
     }),
-    outputSchema: z.boolean(),
+    outputSchema: z.object({
+      sent: z.boolean(),
+      details: z.string(),
+    }),
   },
   async (input) => {
-    // Placeholder implementation for sending Telegram message
-    // In a real application, this would use the Telegram Bot API to send the message
-    console.log(`Sending Telegram message to ${input.phoneNumber}: ${input.message}`);
-    // Simulate potential failure for demonstration, e.g., if Telegram API call failed
-    // For this demo, we'll assume it succeeds if it reaches here.
-    // if (Math.random() < 0.1) return false; // Simulate 10% failure rate
-    return true;
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_TARGET_CHAT_ID;
+
+    if (!token) {
+      console.error('TELEGRAM_BOT_TOKEN is not set in .env');
+      return { sent: false, details: 'Telegram bot token not configured on server.' };
+    }
+    if (!chatId || chatId === "YOUR_TELEGRAM_CHAT_ID_HERE") {
+      console.error('TELEGRAM_TARGET_CHAT_ID is not set or is placeholder in .env');
+      return { sent: false, details: 'Telegram target chat ID not configured on server.' };
+    }
+
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: input.text,
+          parse_mode: 'Markdown', // Optional: if you use markdown in your message
+        }),
+      });
+
+      const result = await response.json();
+      if (result.ok) {
+        console.log(`Telegram message sent to chat_id ${chatId}`);
+        return { sent: true, details: 'Message sent successfully via Telegram.' };
+      } else {
+        console.error('Failed to send Telegram message:', result);
+        return { sent: false, details: `Telegram API error: ${result.description || 'Unknown error'}` };
+      }
+    } catch (error: any) {
+      console.error('Error sending Telegram message:', error);
+      return { sent: false, details: `Network or other error: ${error.message || 'Unknown error'}` };
+    }
   }
 );
 
-const generateVerificationCodePrompt = ai.definePrompt({
-  name: 'generateVerificationCodePrompt',
-  tools: [sendTelegramMessage],
-  input: {schema: GenerateVerificationCodeInputSchema},
-  output: {schema: GenerateVerificationCodeOutputSchema},
-  prompt: `You are tasked with generating a verification code and sending it to the user via Telegram.
-
-  Generate a random 6-digit verification code. Then, use the sendTelegramMessage tool to send the code to the user's phone number.
-
-  Phone Number: {{{fullPhoneNumber}}}
-
-  Respond to the user with a success message if the code was sent successfully, or an error message if there was an issue.
-  `,
-});
 
 const generateVerificationCodeFlow = ai.defineFlow(
   {
@@ -74,29 +94,34 @@ const generateVerificationCodeFlow = ai.defineFlow(
   },
   async (input) => {
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const message = `Your verification code is: ${verificationCode}`;
+    const messageText = `Your OTP is: *${verificationCode}*\nPlease enter this OTP on the website to verify.`;
 
     try {
-      const success = await sendTelegramMessage({
-        phoneNumber: input.fullPhoneNumber, // Use fullPhoneNumber from input
-        message: message,
-      });
+      const sendResult = await sendTelegramMessageTool({ text: messageText });
 
-      if (success) {
-        return {success: true, message: 'Verification code sent successfully via Telegram.'};
+      if (sendResult.sent) {
+        return {
+          success: true,
+          message: `Verification code sent to Telegram. (Code: ${verificationCode} for phone: ${input.fullPhoneNumber})`,
+          verificationCode: verificationCode,
+        };
       } else {
-        // This part might be less likely to be hit if the tool itself doesn't return false explicitly
-        // or if an error isn't thrown by the tool. The LLM's response based on the tool's output
-        // might be more relevant if the tool returns a structured response.
-        // However, for a simple boolean success from the tool:
-        return {success: false, message: 'The sendTelegramMessage tool reported failure.'};
+        // Still return the code for manual verification if sending failed, but indicate the issue.
+        return {
+          success: false, // Or true, depending on whether code generation itself is the "success"
+          message: `Generated code ${verificationCode} for ${input.fullPhoneNumber}. Telegram send failed: ${sendResult.details}`,
+          verificationCode: verificationCode,
+        };
       }
     } catch (error) {
-      console.error('Error in generateVerificationCodeFlow calling sendTelegramMessage:', error);
-      // This catches errors from the tool execution itself (e.g., network issues, unhandled exceptions in tool)
-      return {success: false, message: 'An error occurred while trying to send the verification code via Telegram.'};
+      console.error('Error in generateVerificationCodeFlow calling sendTelegramMessageTool:', error);
+      // Catch errors from the tool execution itself
+      return {
+        success: false,
+        message: 'An error occurred while trying to send the verification code via Telegram.',
+        // Optionally, still provide the code if generated before the error
+        verificationCode: verificationCode, 
+      };
     }
   }
 );
-
-    
