@@ -11,17 +11,75 @@ import { Smartphone, KeyRound, Loader2, CheckCircle2, ArrowLeft, Globe, Hash } f
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Not used, but kept for consistency
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { sendCodeAction, verifyCodeAction } from "@/lib/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
+const africanCountries = [
+  { name: "Algeria", code: "+213" },
+  { name: "Angola", code: "+244" },
+  { name: "Benin", code: "+229" },
+  { name: "Botswana", code: "+267" },
+  { name: "Burkina Faso", code: "+226" },
+  { name: "Burundi", code: "+257" },
+  { name: "Cabo Verde", code: "+238" },
+  { name: "Cameroon", code: "+237" },
+  { name: "Central African Republic", code: "+236" },
+  { name: "Chad", code: "+235" },
+  { name: "Comoros", code: "+269" },
+  { name: "Congo, Dem. Rep.", code: "+243" },
+  { name: "Congo, Rep.", code: "+242" },
+  { name: "Cote d'Ivoire", code: "+225" },
+  { name: "Djibouti", code: "+253" },
+  { name: "Egypt", code: "+20" },
+  { name: "Equatorial Guinea", code: "+240" },
+  { name: "Eritrea", code: "+291" },
+  { name: "Eswatini (fmr. Swaziland)", code: "+268" },
+  { name: "Ethiopia", code: "+251" },
+  { name: "Gabon", code: "+241" },
+  { name: "Gambia", code: "+220" },
+  { name: "Ghana", code: "+233" },
+  { name: "Guinea", code: "+224" },
+  { name: "Guinea-Bissau", code: "+245" },
+  { name: "Kenya", code: "+254" },
+  { name: "Lesotho", code: "+266" },
+  { name: "Liberia", code: "+231" },
+  { name: "Libya", code: "+218" },
+  { name: "Madagascar", code: "+261" },
+  { name: "Malawi", code: "+265" },
+  { name: "Mali", code: "+223" },
+  { name: "Mauritania", code: "+222" },
+  { name: "Mauritius", code: "+230" },
+  { name: "Morocco", code: "+212" },
+  { name: "Mozambique", code: "+258" },
+  { name: "Namibia", code: "+264" },
+  { name: "Niger", code: "+227" },
+  { name: "Nigeria", code: "+234" },
+  { name: "Rwanda", code: "+250" },
+  { name: "Sao Tome and Principe", code: "+239" },
+  { name: "Senegal", code: "+221" },
+  { name: "Seychelles", code: "+248" },
+  { name: "Sierra Leone", code: "+232" },
+  { name: "Somalia", code: "+252" },
+  { name: "South Africa", code: "+27" },
+  { name: "South Sudan", code: "+211" },
+  { name: "Sudan", code: "+249" },
+  { name: "Tanzania", code: "+255" },
+  { name: "Togo", code: "+228" },
+  { name: "Tunisia", code: "+216" },
+  { name: "Uganda", code: "+256" },
+  { name: "Zambia", code: "+260" },
+  { name: "Zimbabwe", code: "+263" },
+];
+
+
 const phoneSchema = z.object({
   countryCode: z.string()
-    .min(2, "Min 2 chars (e.g. +1)")
-    .max(4, "Max 4 chars (e.g. +999)")
-    .regex(/^\+\d{1,3}$/, "Invalid format. Must start with + (e.g., +1, +44)"),
+    .min(2, "Please select a country code.")
+    .max(5, "Country code is too long.") // Increased max to accommodate codes like +268
+    .regex(/^\+\d{1,4}$/, "Invalid country code format."), // Adjusted regex for up to 4 digits after +
   localPhoneNumber: z.string()
     .min(7, "Phone number is too short.")
     .max(14, "Phone number is too long.")
@@ -49,7 +107,7 @@ export function PhoneVerificationForm() {
   const [sendCodeFormState, sendCodeFormAction] = useFormState(sendCodeAction, { success: false, message: "" });
   const phoneForm = useForm<z.infer<typeof phoneSchema>>({
     resolver: zodResolver(phoneSchema),
-    defaultValues: { countryCode: "+1", localPhoneNumber: "" },
+    defaultValues: { countryCode: "+234", localPhoneNumber: "" }, // Default to Nigeria
   });
 
   // Form state for verifying code
@@ -115,7 +173,7 @@ export function PhoneVerificationForm() {
   const handleBackToPhoneInput = () => {
     setStep("phoneNumber");
     setCurrentPhoneNumber(null);
-    phoneForm.reset({ countryCode: "+1", localPhoneNumber: "" });
+    phoneForm.reset({ countryCode: "+234", localPhoneNumber: "" }); // Reset to default
     codeForm.reset();
   };
 
@@ -152,18 +210,23 @@ export function PhoneVerificationForm() {
                 control={phoneForm.control}
                 name="countryCode"
                 render={({ field }) => (
-                  <FormItem className="w-1/3">
+                  <FormItem className="w-2/5"> {/* Adjusted width */}
                     <FormLabel htmlFor="countryCode">Country</FormLabel>
                     <div className="relative">
-                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
                       <FormControl>
-                        <Input
-                          id="countryCode"
-                          type="text"
-                          placeholder="+1"
-                          className="pl-10"
-                          {...field}
-                        />
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <SelectTrigger id="countryCode" className="pl-10">
+                            <SelectValue placeholder="Select country" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {africanCountries.map((country) => (
+                              <SelectItem key={country.code} value={country.code}>
+                                {country.name} ({country.code})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </FormControl>
                     </div>
                     <FormMessage />
@@ -174,7 +237,7 @@ export function PhoneVerificationForm() {
                 control={phoneForm.control}
                 name="localPhoneNumber"
                 render={({ field }) => (
-                  <FormItem className="w-2/3">
+                  <FormItem className="w-3/5"> {/* Adjusted width */}
                     <FormLabel htmlFor="localPhoneNumber">Phone Number</FormLabel>
                     <div className="relative">
                       <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -245,5 +308,3 @@ export function PhoneVerificationForm() {
     </>
   );
 }
-
-    

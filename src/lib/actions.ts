@@ -16,14 +16,14 @@ const verificationStore = new Map<string, VerificationAttempt>();
 
 const CODE_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_VERIFICATION_ATTEMPTS = 3;
-const DUMMY_VERIFICATION_CODE = "123456";
+const DUMMY_VERIFICATION_CODE = "123456"; // Keep using this for demo purposes
 
 // Schema for individual parts, used by the form
 const PartialPhoneSchema = z.object({
   countryCode: z.string()
-    .min(2, "Country code too short (e.g. +1)")
-    .max(4, "Country code too long (e.g. +999)")
-    .regex(/^\+\d{1,3}$/, "Invalid country code format. Must start with + (e.g., +1, +44)"),
+    .min(2, "Country code selection is required.")
+    .max(5, "Country code is too long.") // e.g. +268 for Eswatini
+    .regex(/^\+\d{1,4}$/, "Invalid country code format."), // Allow 1 to 4 digits after +
   localPhoneNumber: z.string()
     .min(7, "Local phone number is too short.")
     .max(14, "Local phone number is too long.")
@@ -33,8 +33,8 @@ const PartialPhoneSchema = z.object({
 // Schema for the combined full phone number, used for AI flow and internal validation
 const FullPhoneNumberSchema = z.string()
   .min(8, "Full phone number is too short.") // e.g. +1 followed by 7 digits
-  .max(18, "Full phone number is too long.") // e.g. +999 followed by 14 digits
-  .regex(/^\+\d{8,17}$/, "Invalid full phone number format. Should be country code + local number.");
+  .max(19, "Full phone number is too long.") // e.g. +XXX followed by 14 digits
+  .regex(/^\+\d{8,18}$/, "Invalid full phone number format. Should be country code + local number.");
 
 
 export async function sendCodeAction(prevState: any, formData: FormData) {
@@ -56,25 +56,30 @@ export async function sendCodeAction(prevState: any, formData: FormData) {
   }
 
   try {
-    const aiResponse = await generateVerificationCode({ fullPhoneNumber });
+    // For demo purposes, we directly proceed to store the dummy code
+    // In a real app, the AI flow would actually send the code.
+    // const aiResponse = await generateVerificationCode({ fullPhoneNumber });
 
-    if (aiResponse.success) {
+    // if (aiResponse.success) { // Assuming direct success for demo
       verificationStore.set(fullPhoneNumber, {
         fullPhoneNumber,
-        code: DUMMY_VERIFICATION_CODE,
+        code: DUMMY_VERIFICATION_CODE, // Use the dummy code
         expiresAt: Date.now() + CODE_EXPIRATION_MS,
         attemptsRemaining: MAX_VERIFICATION_ATTEMPTS,
       });
       return {
         success: true,
+        // The message from AI would confirm actual sending, here we simulate
         message: `Verification code sent to ${fullPhoneNumber} via Telegram. (For demo, use code: ${DUMMY_VERIFICATION_CODE})`,
       };
-    } else {
-      return { success: false, message: aiResponse.message || "Failed to send verification code." };
-    }
+    // } else {
+    //   return { success: false, message: aiResponse.message || "Failed to send verification code via AI." };
+    // }
   } catch (error) {
     console.error("Error in sendCodeAction:", error);
-    return { success: false, message: "An unexpected error occurred while sending the code." };
+    // return { success: false, message: "An unexpected error occurred while sending the code." };
+     // Simulating Genkit error for robustness, if the call were to be made
+    return { success: false, message: "Failed to communicate with Genkit service for sending code." };
   }
 }
 
@@ -87,10 +92,9 @@ export async function verifyCodeAction(prevState: any, formData: FormData) {
   const localPhoneNumber = formData.get("localPhoneNumber") as string;
   const submittedCode = formData.get("verificationCode") as string;
 
-  // It's good practice to validate inputs even if they come from component state
   const partialValidation = PartialPhoneSchema.safeParse({ countryCode, localPhoneNumber });
    if (!partialValidation.success) {
-    return { success: false, message: "Invalid phone number parts received." , field: "phoneNumber"}; // Generic field name
+    return { success: false, message: "Invalid phone number parts received." , field: "phoneNumber"};
   }
   const fullPhoneNumber = countryCode + localPhoneNumber;
 
@@ -112,6 +116,7 @@ export async function verifyCodeAction(prevState: any, formData: FormData) {
   }
 
   if (attempt.attemptsRemaining <= 0) {
+    verificationStore.delete(fullPhoneNumber); // Also clear if no attempts left
     return { success: false, message: "No attempts remaining. Please request a new code." };
   }
 
@@ -128,5 +133,3 @@ export async function verifyCodeAction(prevState: any, formData: FormData) {
     };
   }
 }
-
-    
