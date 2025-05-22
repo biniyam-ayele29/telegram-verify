@@ -2,10 +2,10 @@
 // src/app/verify-telegram/page.tsx
 "use client";
 
-import { useEffect, Suspense } from "react";
+import React, { useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { useActionState } from "react";
+import { useActionState } from "react"; // Updated import
 import { useFormStatus } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -114,37 +114,38 @@ function VerifyTelegramContent() {
      );
   }
 
-  const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}`;
-  const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}`;
+  // Append ?start to the bot URL. You can add a payload if your bot expects one, e.g., ?start=somePayload
+  const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}?start`; 
+  const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}&start=`; // For tg:// scheme, start parameter is usually separate or part of domain if supported
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(telegramBotUrl)}`;
+
 
   return (
     <Card className="shadow-xl w-full max-w-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-center text-primary">Get Your Code via Telegram</CardTitle>
         <CardDescription className="text-center text-muted-foreground pt-1">
-          Open Telegram to get your verification code for <strong>{fullPhoneNumber}</strong>.
+          Open our Telegram bot for <strong>{fullPhoneNumber}</strong>. You'll receive your code after starting the bot.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-3 text-center">
-            <p className="text-sm text-foreground">1. Open our Telegram bot:</p>
+            <p className="text-sm text-foreground">1. Click below or scan the QR code to open our Telegram bot and get your code:</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button asChild variant="outline">
                     <a href={telegramAppUrl} target="_blank" rel="noopener noreferrer">
-                        <BotMessageSquare className="mr-2 h-4 w-4" /> Open Telegram App
+                        <BotMessageSquare className="mr-2 h-4 w-4" /> Open in Telegram App
                     </a>
                 </Button>
                 <Button asChild variant="outline">
                     <a href={telegramBotUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-2 h-4 w-4" /> Open Telegram Web
+                        <ExternalLink className="mr-2 h-4 w-4" /> Open in Telegram Web
                     </a>
                 </Button>
             </div>
         </div>
 
         <div className="space-y-3 text-center">
-             <p className="text-sm text-foreground">Or scan this QR code:</p>
             <div className="flex justify-center">
                 <Image
                     src={qrCodeUrl}
@@ -160,7 +161,7 @@ function VerifyTelegramContent() {
         <hr className="my-6 border-border" />
 
         <div>
-             <p className="text-sm text-foreground text-center mb-3">2. Enter the code you receive from the bot:</p>
+             <p className="text-sm text-foreground text-center mb-3">2. Enter the 6-digit code you receive from the bot:</p>
             <Form {...codeForm}>
                 <form
                     action={(formData) => {

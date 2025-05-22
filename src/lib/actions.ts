@@ -23,7 +23,7 @@ const MAX_VERIFICATION_ATTEMPTS = 3;
 // Schema for individual parts, used by the form
 const PartialPhoneSchema = z.object({
   countryCode: z.string()
-    .min(1, "Please select a country code.") // Allow + and at least one digit
+    .min(1, "Please select a country code.") 
     .max(5, "Country code is too long.")
     .regex(/^\+\d{1,4}$/, "Invalid country code format (e.g., +1)."),
   localPhoneNumber: z.string()
@@ -66,9 +66,10 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
   }
 
   try {
+    // The Genkit flow now only generates the code, it doesn't send it.
     const aiResponse: GenerateVerificationCodeOutput = await generateVerificationCode({ fullPhoneNumber });
 
-    if (aiResponse.verificationCode) {
+    if (aiResponse.success && aiResponse.verificationCode) {
       verificationStore.set(fullPhoneNumber, {
         fullPhoneNumber,
         code: aiResponse.verificationCode,
@@ -76,22 +77,30 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
         attemptsRemaining: MAX_VERIFICATION_ATTEMPTS,
       });
 
-      // If AI reported an issue sending, but gave a code, we still proceed but inform user.
-      // The 'success' here means the action to prepare for verification is done.
       return {
         success: true,
-        message: "Redirection to verification step.", // Internal message for state
-        toastMessage: aiResponse.message, // Message from AI to show user
+        message: "Verification code generated. Redirecting user.", // Internal message
+        toastMessage: "Code ready! Please open our Telegram bot to get your verification code.", // Message for the user
         redirectUrl: `/verify-telegram?phone=${encodeURIComponent(fullPhoneNumber)}`,
       };
 
     } else {
       // AI flow failed to provide a code or indicated a critical failure
-      return { success: false, message: aiResponse.message || "Failed to generate or send verification code.", field: "localPhoneNumber" };
+      return { 
+        success: false, 
+        message: aiResponse.message || "Failed to generate verification code.", 
+        field: "localPhoneNumber",
+        toastMessage: aiResponse.message || "Could not prepare verification. Please try again."
+      };
     }
   } catch (error) {
     console.error("Error in sendCodeAction calling Genkit flow:", error);
-    return { success: false, message: "An unexpected error occurred while trying to send the verification code." , field: "localPhoneNumber"};
+    return { 
+        success: false, 
+        message: "An unexpected error occurred while preparing verification.",
+        field: "localPhoneNumber",
+        toastMessage: "An unexpected error occurred. Please try again."
+    };
   }
 }
 
