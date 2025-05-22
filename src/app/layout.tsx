@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans', // Using a more generic variable name
+  display: 'swap', // Added for better font loading behavior
 });
 
 export const metadata: Metadata = {
