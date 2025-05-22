@@ -114,9 +114,8 @@ function VerifyTelegramContent() {
      );
   }
 
-  // Append ?start to the bot URL. You can add a payload if your bot expects one, e.g., ?start=somePayload
-  const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}?start`; 
-  const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}&start=`; // For tg:// scheme, start parameter is usually separate or part of domain if supported
+  const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}`; 
+  const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}`; 
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(telegramBotUrl)}`;
 
 
@@ -125,7 +124,7 @@ function VerifyTelegramContent() {
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-center text-primary">Get Your Code via Telegram</CardTitle>
         <CardDescription className="text-center text-muted-foreground pt-1">
-          Open our Telegram bot for <strong>{fullPhoneNumber}</strong>. You'll receive your code after starting the bot.
+          Open our Telegram bot for <strong>{fullPhoneNumber}</strong>. You'll receive your code after interacting with the bot.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -231,3 +230,4 @@ export default function VerifyTelegramPage() {
     </main>
   );
 }
+
