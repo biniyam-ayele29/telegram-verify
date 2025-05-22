@@ -2,8 +2,8 @@
 // src/components/phone-verification-form.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useState, useEffect, useActionState } from "react"; // Changed import
+import { useFormStatus } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -78,7 +78,7 @@ const africanCountries = [
 const phoneSchema = z.object({
   countryCode: z.string()
     .min(2, "Please select a country code.")
-    .max(5, "Country code is too long.") 
+    .max(5, "Country code is too long.")
     .regex(/^\+\d{1,4}$/, "Invalid country code format."),
   localPhoneNumber: z.string()
     .min(7, "Phone number is too short.")
@@ -98,20 +98,26 @@ interface CurrentPhoneNumber {
   localPhoneNumber: string;
 }
 
+interface ActionFormState {
+    success: boolean;
+    message: string;
+    field?: string;
+}
+
 export function PhoneVerificationForm() {
   const [step, setStep] = useState<Step>("phoneNumber");
   const [currentPhoneNumber, setCurrentPhoneNumber] = useState<CurrentPhoneNumber | null>(null);
   const { toast } = useToast();
 
   // Form state for sending code
-  const [sendCodeFormState, sendCodeFormAction] = useFormState(sendCodeAction, { success: false, message: "" });
+  const [sendCodeFormState, sendCodeFormAction] = useActionState<ActionFormState, FormData>(sendCodeAction, { success: false, message: "" }); // Changed hook
   const phoneForm = useForm<z.infer<typeof phoneSchema>>({
     resolver: zodResolver(phoneSchema),
     defaultValues: { countryCode: "+251", localPhoneNumber: "" }, // Default to Ethiopia
   });
 
   // Form state for verifying code
-  const [verifyCodeFormState, verifyCodeFormAction] = useFormState(verifyCodeAction, { success: false, message: "" });
+  const [verifyCodeFormState, verifyCodeFormAction] = useActionState<ActionFormState, FormData>(verifyCodeAction, { success: false, message: "" }); // Changed hook
   const codeForm = useForm<z.infer<typeof codeSchema>>({
     resolver: zodResolver(codeSchema),
     defaultValues: { verificationCode: "" },
@@ -141,7 +147,7 @@ export function PhoneVerificationForm() {
           phoneForm.setError("countryCode", { type: "manual", message: sendCodeFormState.message });
         } else if (sendCodeFormState.field === "localPhoneNumber") {
             phoneForm.setError("localPhoneNumber", { type: "manual", message: sendCodeFormState.message });
-        } else if (sendCodeFormState.field === "fullPhoneNumber") { 
+        } else if (sendCodeFormState.field === "fullPhoneNumber") {
             phoneForm.setError("countryCode", { type: "manual", message: sendCodeFormState.message });
         }
       }
@@ -169,7 +175,7 @@ export function PhoneVerificationForm() {
       }
     }
   }, [verifyCodeFormState, toast, codeForm]);
-  
+
   const handleBackToPhoneInput = () => {
     setStep("phoneNumber");
     setCurrentPhoneNumber(null);
@@ -210,7 +216,7 @@ export function PhoneVerificationForm() {
                 control={phoneForm.control}
                 name="countryCode"
                 render={({ field }) => (
-                  <FormItem className="w-2/5"> 
+                  <FormItem className="w-2/5">
                     <FormLabel htmlFor="countryCodeSelect">Country</FormLabel>
                     <div className="relative">
                       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
@@ -244,7 +250,7 @@ export function PhoneVerificationForm() {
                 control={phoneForm.control}
                 name="localPhoneNumber"
                 render={({ field }) => (
-                  <FormItem className="w-3/5"> 
+                  <FormItem className="w-3/5">
                     <FormLabel htmlFor="localPhoneNumber">Phone Number</FormLabel>
                     <div className="relative">
                       <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -315,5 +321,3 @@ export function PhoneVerificationForm() {
     </>
   );
 }
-
-    
