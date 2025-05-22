@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useActionState } from "react";
+import { useActionState } from "react"; // Correct hook for React 19+
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -90,9 +90,10 @@ export function PhoneVerificationForm() {
           if (sendCodeFormState.field === "countryCode" || sendCodeFormState.field === "localPhoneNumber") {
              phoneForm.setError(sendCodeFormState.field as "countryCode" | "localPhoneNumber", { type: "manual", message: sendCodeFormState.message });
           } else {
-            // Generic error not tied to a specific field in this form.
              phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
           }
+        } else {
+            phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
         }
       }
     }
@@ -117,29 +118,30 @@ export function PhoneVerificationForm() {
             name="countryCode"
             render={({ field }) => (
               <FormItem className="w-2/5">
-                <FormLabel htmlFor="countryCodeSelect">Country</FormLabel>
+                <FormLabel>Country</FormLabel>
                 <div className="relative">
                   <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none z-10" />
-                  <FormControl>
-                    <>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <SelectTrigger id="countryCodeSelect" className="pl-10">
-                          <SelectValue placeholder="Select country" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {africanCountries.map((country) => (
-                            <SelectItem key={country.code} value={country.code}>
-                              {country.name} ({country.code})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <input type="hidden" {...field} />
-                    </>
-                  </FormControl>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    name={field.name} // Ensure name is passed for form data if not handled by hidden input alone
+                  >
+                    <FormControl>
+                      <SelectTrigger className="pl-10" ref={field.ref}>
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {africanCountries.map((country) => (
+                        <SelectItem key={country.code} value={country.code}>
+                          {country.name} ({country.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {/* This hidden input ensures the value is submitted with FormData for server actions */}
+                  {/* Using field.name and field.value directly. {...field} would also work but is less explicit here. */}
+                  <input type="hidden" name={field.name} value={field.value} />
                 </div>
                 <FormMessage />
               </FormItem>
@@ -150,7 +152,7 @@ export function PhoneVerificationForm() {
             name="localPhoneNumber"
             render={({ field }) => (
               <FormItem className="w-3/5">
-                <FormLabel htmlFor="localPhoneNumber">Phone Number</FormLabel>
+                <FormLabel>Phone Number</FormLabel>
                 <div className="relative">
                   <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <FormControl>
