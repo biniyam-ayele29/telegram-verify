@@ -78,8 +78,8 @@ const africanCountries = [
 const phoneSchema = z.object({
   countryCode: z.string()
     .min(2, "Please select a country code.")
-    .max(5, "Country code is too long.") // Increased max to accommodate codes like +268
-    .regex(/^\+\d{1,4}$/, "Invalid country code format."), // Adjusted regex for up to 4 digits after +
+    .max(5, "Country code is too long.") 
+    .regex(/^\+\d{1,4}$/, "Invalid country code format."),
   localPhoneNumber: z.string()
     .min(7, "Phone number is too short.")
     .max(14, "Phone number is too long.")
@@ -107,7 +107,7 @@ export function PhoneVerificationForm() {
   const [sendCodeFormState, sendCodeFormAction] = useFormState(sendCodeAction, { success: false, message: "" });
   const phoneForm = useForm<z.infer<typeof phoneSchema>>({
     resolver: zodResolver(phoneSchema),
-    defaultValues: { countryCode: "+234", localPhoneNumber: "" }, // Default to Nigeria
+    defaultValues: { countryCode: "+251", localPhoneNumber: "" }, // Default to Ethiopia
   });
 
   // Form state for verifying code
@@ -141,7 +141,7 @@ export function PhoneVerificationForm() {
           phoneForm.setError("countryCode", { type: "manual", message: sendCodeFormState.message });
         } else if (sendCodeFormState.field === "localPhoneNumber") {
             phoneForm.setError("localPhoneNumber", { type: "manual", message: sendCodeFormState.message });
-        } else if (sendCodeFormState.field === "fullPhoneNumber") { // Generic error not tied to a specific part
+        } else if (sendCodeFormState.field === "fullPhoneNumber") { 
             phoneForm.setError("countryCode", { type: "manual", message: sendCodeFormState.message });
         }
       }
@@ -173,7 +173,7 @@ export function PhoneVerificationForm() {
   const handleBackToPhoneInput = () => {
     setStep("phoneNumber");
     setCurrentPhoneNumber(null);
-    phoneForm.reset({ countryCode: "+234", localPhoneNumber: "" }); // Reset to default
+    phoneForm.reset({ countryCode: "+251", localPhoneNumber: "" }); // Reset to Ethiopia
     codeForm.reset();
   };
 
@@ -210,23 +210,30 @@ export function PhoneVerificationForm() {
                 control={phoneForm.control}
                 name="countryCode"
                 render={({ field }) => (
-                  <FormItem className="w-2/5"> {/* Adjusted width */}
-                    <FormLabel htmlFor="countryCode">Country</FormLabel>
+                  <FormItem className="w-2/5"> 
+                    <FormLabel htmlFor="countryCodeSelect">Country</FormLabel>
                     <div className="relative">
                       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
                       <FormControl>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <SelectTrigger id="countryCode" className="pl-10">
-                            <SelectValue placeholder="Select country" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {africanCountries.map((country) => (
-                              <SelectItem key={country.code} value={country.code}>
-                                {country.name} ({country.code})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value} // Fully controlled component
+                          >
+                            <SelectTrigger id="countryCodeSelect" className="pl-10">
+                              <SelectValue placeholder="Select country" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {africanCountries.map((country) => (
+                                <SelectItem key={country.code} value={country.code}>
+                                  {country.name} ({country.code})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {/* Hidden input to ensure value is submitted with FormData */}
+                          <input type="hidden" {...field} />
+                        </>
                       </FormControl>
                     </div>
                     <FormMessage />
@@ -237,7 +244,7 @@ export function PhoneVerificationForm() {
                 control={phoneForm.control}
                 name="localPhoneNumber"
                 render={({ field }) => (
-                  <FormItem className="w-3/5"> {/* Adjusted width */}
+                  <FormItem className="w-3/5"> 
                     <FormLabel htmlFor="localPhoneNumber">Phone Number</FormLabel>
                     <div className="relative">
                       <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -308,3 +315,5 @@ export function PhoneVerificationForm() {
     </>
   );
 }
+
+    
