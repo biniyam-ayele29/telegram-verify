@@ -21,9 +21,9 @@ const DUMMY_VERIFICATION_CODE = "123456"; // Keep using this for demo purposes
 // Schema for individual parts, used by the form
 const PartialPhoneSchema = z.object({
   countryCode: z.string()
-    .min(2, "Country code selection is required.")
-    .max(5, "Country code is too long.") // e.g. +268 for Eswatini
-    .regex(/^\+\d{1,4}$/, "Invalid country code format."), // Allow 1 to 4 digits after +
+    .min(2, "Please select a country code.")
+    .max(5, "Country code is too long.") 
+    .regex(/^\+\d{1,4}$/, "Invalid country code format."),
   localPhoneNumber: z.string()
     .min(7, "Local phone number is too short.")
     .max(14, "Local phone number is too long.")
@@ -32,14 +32,14 @@ const PartialPhoneSchema = z.object({
 
 // Schema for the combined full phone number, used for AI flow and internal validation
 const FullPhoneNumberSchema = z.string()
-  .min(8, "Full phone number is too short.") // e.g. +1 followed by 7 digits
-  .max(19, "Full phone number is too long.") // e.g. +XXX followed by 14 digits
+  .min(8, "Full phone number is too short.") 
+  .max(19, "Full phone number is too long.") 
   .regex(/^\+\d{8,18}$/, "Invalid full phone number format. Should be country code + local number.");
 
 
 export async function sendCodeAction(prevState: any, formData: FormData) {
-  const countryCode = formData.get("countryCode") as string;
-  const localPhoneNumber = formData.get("localPhoneNumber") as string;
+  const countryCode = (formData.get("countryCode") as string | null) ?? "";
+  const localPhoneNumber = (formData.get("localPhoneNumber") as string | null) ?? "";
 
   const partialValidation = PartialPhoneSchema.safeParse({ countryCode, localPhoneNumber });
   if (!partialValidation.success) {
@@ -52,7 +52,8 @@ export async function sendCodeAction(prevState: any, formData: FormData) {
   
   const fullValidation = FullPhoneNumberSchema.safeParse(fullPhoneNumber);
   if(!fullValidation.success) {
-    return { success: false, message: "Invalid combined phone number. " + fullValidation.error.errors[0].message, field: "fullPhoneNumber" };
+    // Prefer reporting error on countryCode if fullPhoneNumber is bad, as it's more likely the issue source or first part.
+    return { success: false, message: "Invalid combined phone number. " + fullValidation.error.errors[0].message, field: "countryCode" };
   }
 
   try {
@@ -70,15 +71,14 @@ export async function sendCodeAction(prevState: any, formData: FormData) {
       return {
         success: true,
         // The message from AI would confirm actual sending, here we simulate
-        message: `Verification code sent to ${fullPhoneNumber} via Telegram. (For demo, use code: ${DUMMY_VERIFICATION_CODE})`,
+        message: `Verification code sent to ${fullPhoneNumber}. (For demo, use code: ${DUMMY_VERIFICATION_CODE})`,
       };
     // } else {
     //   return { success: false, message: aiResponse.message || "Failed to send verification code via AI." };
     // }
   } catch (error) {
     console.error("Error in sendCodeAction:", error);
-    // return { success: false, message: "An unexpected error occurred while sending the code." };
-     // Simulating Genkit error for robustness, if the call were to be made
+    // Simulating Genkit error for robustness, if the call were to be made
     return { success: false, message: "Failed to communicate with Genkit service for sending code." };
   }
 }
@@ -88,13 +88,15 @@ const VerificationCodeSchema = z.string()
   .regex(/^\d{6}$/, "Verification code must be numeric.");
 
 export async function verifyCodeAction(prevState: any, formData: FormData) {
-  const countryCode = formData.get("countryCode") as string;
-  const localPhoneNumber = formData.get("localPhoneNumber") as string;
-  const submittedCode = formData.get("verificationCode") as string;
+  const countryCode = (formData.get("countryCode") as string | null) ?? "";
+  const localPhoneNumber = (formData.get("localPhoneNumber") as string | null) ?? "";
+  const submittedCode = (formData.get("verificationCode") as string | null) ?? "";
 
   const partialValidation = PartialPhoneSchema.safeParse({ countryCode, localPhoneNumber });
    if (!partialValidation.success) {
-    return { success: false, message: "Invalid phone number parts received." , field: "phoneNumber"};
+    // Determine field based on error path, default to countryCode if path is unclear
+    const field = partialValidation.error.errors[0]?.path.includes("localPhoneNumber") ? "localPhoneNumber" : "countryCode";
+    return { success: false, message: "Invalid phone number parts received: " + partialValidation.error.errors[0].message , field};
   }
   const fullPhoneNumber = countryCode + localPhoneNumber;
 
@@ -107,17 +109,17 @@ export async function verifyCodeAction(prevState: any, formData: FormData) {
   const attempt = verificationStore.get(fullPhoneNumber);
 
   if (!attempt) {
-    return { success: false, message: "No verification attempt found for this phone number, or it has expired. Please request a new code." };
+    return { success: false, message: "No verification attempt found for this phone number, or it has expired. Please request a new code.", field: "verificationCode" };
   }
 
   if (Date.now() > attempt.expiresAt) {
     verificationStore.delete(fullPhoneNumber);
-    return { success: false, message: "Verification code has expired. Please request a new code." };
+    return { success: false, message: "Verification code has expired. Please request a new code.", field: "verificationCode" };
   }
 
   if (attempt.attemptsRemaining <= 0) {
-    verificationStore.delete(fullPhoneNumber); // Also clear if no attempts left
-    return { success: false, message: "No attempts remaining. Please request a new code." };
+    verificationStore.delete(fullPhoneNumber); 
+    return { success: false, message: "No attempts remaining. Please request a new code.", field: "verificationCode" };
   }
 
   if (submittedCode === attempt.code) {
@@ -133,3 +135,4 @@ export async function verifyCodeAction(prevState: any, formData: FormData) {
     };
   }
 }
+
