@@ -2,42 +2,18 @@
 // src/lib/actions.ts
 "use server";
 
-import { z } from "zod";
 import { generateVerificationCode } from "@/ai/flows/generate-verification-code";
 import type { GenerateVerificationCodeOutput } from "@/ai/flows/generate-verification-code";
+import {
+  verificationStore,
+  CODE_EXPIRATION_MS,
+  MAX_VERIFICATION_ATTEMPTS,
+  PartialPhoneSchema,
+  FullPhoneNumberSchema,
+  VerificationCodeSchema
+} from "./verification-shared"; // Import from the new shared file
 
-
-interface VerificationAttempt {
-  fullPhoneNumber: string;
-  code: string;
-  expiresAt: number;
-  attemptsRemaining: number;
-}
-
-// In a real app, use a persistent store like Redis or a database.
-const verificationStore = new Map<string, VerificationAttempt>();
-
-const CODE_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_VERIFICATION_ATTEMPTS = 3;
-
-// Schema for individual parts, used by the form
-const PartialPhoneSchema = z.object({
-  countryCode: z.string()
-    .min(1, "Please select a country code.") 
-    .max(5, "Country code is too long.")
-    .regex(/^\+\d{1,4}$/, "Invalid country code format (e.g., +1)."),
-  localPhoneNumber: z.string()
-    .min(7, "Local phone number is too short.")
-    .max(14, "Local phone number is too long.")
-    .regex(/^\d+$/, "Local phone number must contain only digits."),
-});
-
-// Schema for the combined full phone number
-const FullPhoneNumberSchema = z.string()
-  .min(8, "Full phone number is too short (country code + local number).")
-  .max(19, "Full phone number is too long.")
-  .regex(/^\+\d{8,18}$/, "Invalid full phone number format (e.g., +11234567890).");
-
+// ActionFormState remains here as it's specific to the actions
 export interface ActionFormState {
     success: boolean;
     message: string;
@@ -66,7 +42,7 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
   }
 
   try {
-    // The Genkit flow now only generates the code, it doesn't send it.
+    // The Genkit flow now only generates the code, doesn't send Telegram message.
     const aiResponse: GenerateVerificationCodeOutput = await generateVerificationCode({ fullPhoneNumber });
 
     if (aiResponse.success && aiResponse.verificationCode) {
@@ -76,6 +52,7 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
         expiresAt: Date.now() + CODE_EXPIRATION_MS,
         attemptsRemaining: MAX_VERIFICATION_ATTEMPTS,
       });
+      console.log(`Stored code ${aiResponse.verificationCode} for ${fullPhoneNumber}`);
 
       return {
         success: true,
@@ -85,28 +62,30 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
       };
 
     } else {
-      // AI flow failed to provide a code or indicated a critical failure
-      return { 
-        success: false, 
-        message: aiResponse.message || "Failed to generate verification code.", 
-        field: "localPhoneNumber",
+      return {
+        success: false,
+        message: aiResponse.message || "Failed to generate verification code.",
+        field: "localPhoneNumber", // Or a more general error field
         toastMessage: aiResponse.message || "Could not prepare verification. Please try again."
       };
     }
   } catch (error) {
     console.error("Error in sendCodeAction calling Genkit flow:", error);
-    return { 
-        success: false, 
-        message: "An unexpected error occurred while preparing verification.",
-        field: "localPhoneNumber",
+    // Provide a user-friendly message, log the actual error for debugging
+    let errorMessage = "An unexpected error occurred while preparing verification.";
+    if (error instanceof Error) {
+        // Potentially add more specific error checking here if needed
+        console.error("Genkit flow error details:", error.message);
+    }
+    return {
+        success: false,
+        message: errorMessage,
+        field: "localPhoneNumber", // Or a general form error
         toastMessage: "An unexpected error occurred. Please try again."
     };
   }
 }
 
-const VerificationCodeSchema = z.string()
-  .length(6, "Verification code must be 6 digits.")
-  .regex(/^\d{6}$/, "Verification code must be numeric and 6 digits.");
 
 export async function verifyCodeAction(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {
   const fullPhoneNumber = (formData.get("fullPhoneNumber") as string | null) ?? "";
@@ -133,8 +112,6 @@ export async function verifyCodeAction(prevState: ActionFormState, formData: For
   }
 
   if (attempt.attemptsRemaining <= 0) {
-    // Potentially keep the record for a bit for audit, but mark as exhausted
-    // verificationStore.delete(fullPhoneNumber);
     return { success: false, message: "No attempts remaining. Please request a new code.", field: "verificationCode" };
   }
 
