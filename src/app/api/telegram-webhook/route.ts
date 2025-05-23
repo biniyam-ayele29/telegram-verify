@@ -31,10 +31,8 @@ bot.onText(/\/receive/, (msg) => {
   const chatId = msg.chat.id;
   console.log(`[Webhook] Received /receive command from chat ID: ${chatId}`);
   usersAwaitingPhoneNumber.add(chatId);
-  console.log(`[Webhook] Added chat ID ${chatId} to usersAwaitingPhoneNumber. Current size: ${usersAwaitingPhoneNumber.size}`);
-  bot.sendMessage(chatId, 'Please send your full phone number (e.g., +1234567890) that you used on the website to get your code.')
-    .then(() => console.log(`[Webhook] Sent 'request for phone number' prompt to chat ID: ${chatId}`))
-    .catch(err => console.error(`[Webhook] Error sending 'request for phone number' prompt to ${chatId}:`, err.message || err));
+  console.log(`[Webhook] Added chat ID ${chatId} to usersAwaitingPhoneNumber. Bot will now wait for user to send phone number. Current size: ${usersAwaitingPhoneNumber.size}`);
+  // No explicit message sent back to user asking for phone number here. User instructions on web page cover this.
 });
 
 // Handler for general messages (potentially phone numbers after /receive)
@@ -44,26 +42,25 @@ bot.on('message', async (msg) => {
 
   // Ignore if it's a command or if user is not in the "awaiting phone number" state
   if (!text || text.startsWith('/') || !usersAwaitingPhoneNumber.has(chatId)) {
-    // If it's a command and not /receive, or user is not awaiting phone, do nothing or handle other commands.
-    // For now, if it's not /receive and they weren't prompted, we ignore.
-    if (text && text.startsWith('/') && text !== '/receive') { // Avoid logging for /receive itself which has its own handler
+    if (text && text.startsWith('/') && text !== '/receive') {
         console.log(`[Webhook] Received unhandled command: ${text} from chat ID: ${chatId}. Not awaiting phone or it's a different command.`);
-    } else if (!usersAwaitingPhoneNumber.has(chatId) && text && !text.startsWith('/')) { // Text from user not in awaiting state
+    } else if (!usersAwaitingPhoneNumber.has(chatId) && text && !text.startsWith('/')) {
         console.log(`[Webhook] Received message from chat ID ${chatId} but not awaiting phone number. Message: ${text.substring(0,50)}...`);
     }
     return;
   }
 
   console.log(`[Webhook] Received potential phone number: "${text}" from chat ID: ${chatId} (was awaiting)`);
-  usersAwaitingPhoneNumber.delete(chatId); // Remove user from awaiting state
+  usersAwaitingPhoneNumber.delete(chatId); // Remove user from awaiting state, regardless of phone validity
   console.log(`[Webhook] Removed chat ID ${chatId} from usersAwaitingPhoneNumber. Current size: ${usersAwaitingPhoneNumber.size}`);
 
 
   const validatedPhoneNumber = FullPhoneNumberSchema.safeParse(text.trim());
 
   if (!validatedPhoneNumber.success) {
-    bot.sendMessage(chatId, 'Invalid phone number format. Please use the full international format (e.g., +1234567890) and try the /receive command again.')
-      .then(() => console.log(`[Webhook] Sent 'invalid phone format' message to chat ID: ${chatId}`))
+    const replyMessage = 'Invalid phone number format. Please ensure you send your full international phone number (e.g., +1234567890). If you need to try again, start with the /receive command.';
+    bot.sendMessage(chatId, replyMessage)
+      .then(() => console.log(`[Webhook] Sent 'invalid phone format' message to chat ID: ${chatId} for input: ${text}`))
       .catch(err => console.error(`[Webhook] Error sending 'invalid phone format' message to ${chatId}:`, err.message || err));
     return;
   }
@@ -91,7 +88,7 @@ bot.on('message', async (msg) => {
         .then(() => console.log(`[Webhook] Sent verification code to chat ID: ${chatId}`))
         .catch(err => console.error(`[Webhook] Error sending verification code to ${chatId}:`, err.message || err));
     } else {
-      const replyMessage = response.data.message || 'Could not retrieve your code. Please try requesting one from the website again (start with /receive in the bot).';
+      const replyMessage = response.data.message || 'Could not retrieve your code. Please ensure you entered the correct phone number and try requesting one from the website again (start with /receive in the bot).';
       bot.sendMessage(chatId, replyMessage)
         .then(() => console.log(`[Webhook] Sent '${replyMessage.substring(0,30)}...' message to chat ID: ${chatId}`))
         .catch(err => console.error(`[Webhook] Error sending 'could not retrieve' message to ${chatId}:`, err.message || err));
@@ -102,7 +99,7 @@ bot.on('message', async (msg) => {
       console.error('[Webhook] Axios error response data:', JSON.stringify(error.response.data, null, 2));
       console.error('[Webhook] Axios error response status:', error.response.status);
     }
-    bot.sendMessage(chatId, 'Sorry, there was an error trying to get your verification code. Please try again on the website and use /receive in the bot.')
+    bot.sendMessage(chatId, 'Sorry, there was an error trying to get your verification code. Please ensure you used the /receive command first, then sent your phone number, and try requesting a code from the website again if needed.')
       .catch(err => console.error(`[Webhook] Error sending general error message to ${chatId}:`, err.message || err));
   }
 });
@@ -134,7 +131,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   console.log('[Webhook] Received GET request on /api/telegram-webhook (typically for health check or initial setup).');
-  // You could add a check here to see if the bot token is set and respond accordingly.
   if (!token) {
     return NextResponse.json({ message: 'Telegram webhook is active, but bot token is NOT configured on the server.' }, {status: 500});
   }

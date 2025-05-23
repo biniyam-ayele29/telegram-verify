@@ -5,12 +5,12 @@
 import React, { useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { useActionState } from "react"; // Updated import
+import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { KeyRound, Loader2, BotMessageSquare, QrCode, ExternalLink, CheckCircle2, ShieldAlert, MessageCircleQuestion, Phone } from "lucide-react";
+import { KeyRound, Loader2, BotMessageSquare, QrCode, ExternalLink, CheckCircle2, ShieldAlert, Phone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -158,7 +158,7 @@ function VerifyTelegramContent() {
                 <span className="font-semibold mr-2">2.</span> In the bot, type and send the command: <code className="bg-muted px-1.5 py-0.5 rounded-sm text-sm mx-1">/receive</code>
             </p>
              <p className="text-sm text-foreground flex items-start">
-                <span className="font-semibold mr-2">3.</span> The bot will ask for your phone number. Reply with: <code className="bg-muted px-1.5 py-0.5 rounded-sm text-sm mx-1">{fullPhoneNumber}</code>
+                <span className="font-semibold mr-2">3.</span> Then, as a new message, send your full phone number: <code className="bg-muted px-1.5 py-0.5 rounded-sm text-sm mx-1">{fullPhoneNumber}</code>
             </p>
             <p className="text-sm text-foreground flex items-start">
                 <span className="font-semibold mr-2">4.</span> The bot will then send you the 6-digit code.
