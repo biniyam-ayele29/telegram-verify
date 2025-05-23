@@ -42,7 +42,6 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
   }
 
   try {
-    // The Genkit flow now only generates the code, doesn't send Telegram message.
     const aiResponse: GenerateVerificationCodeOutput = await generateVerificationCode({ fullPhoneNumber });
 
     if (aiResponse.success && aiResponse.verificationCode) {
@@ -57,7 +56,7 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
       return {
         success: true,
         message: "Verification code generated. Redirecting user.", // Internal message
-        toastMessage: "Code ready! Please open our Telegram bot to get your verification code.", // Message for the user
+        toastMessage: "Code ready! Go to our Telegram bot, type /receive, then send your phone number when prompted.", // Message for the user
         redirectUrl: `/verify-telegram?phone=${encodeURIComponent(fullPhoneNumber)}`,
       };
 
@@ -71,16 +70,14 @@ export async function sendCodeAction(prevState: ActionFormState, formData: FormD
     }
   } catch (error) {
     console.error("Error in sendCodeAction calling Genkit flow:", error);
-    // Provide a user-friendly message, log the actual error for debugging
     let errorMessage = "An unexpected error occurred while preparing verification.";
     if (error instanceof Error) {
-        // Potentially add more specific error checking here if needed
         console.error("Genkit flow error details:", error.message);
     }
     return {
         success: false,
         message: errorMessage,
-        field: "localPhoneNumber", // Or a general form error
+        field: "localPhoneNumber",
         toastMessage: "An unexpected error occurred. Please try again."
     };
   }

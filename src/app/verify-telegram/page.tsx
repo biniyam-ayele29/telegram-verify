@@ -10,7 +10,7 @@ import { useFormStatus } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { KeyRound, Loader2, BotMessageSquare, QrCode, ExternalLink, CheckCircle2, ShieldAlert } from "lucide-react";
+import { KeyRound, Loader2, BotMessageSquare, QrCode, ExternalLink, CheckCircle2, ShieldAlert, MessageCircleQuestion, Phone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -124,13 +124,15 @@ function VerifyTelegramContent() {
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-center text-primary">Get Your Code via Telegram</CardTitle>
         <CardDescription className="text-center text-muted-foreground pt-1">
-          Open our Telegram bot for <strong>{fullPhoneNumber}</strong>. You'll receive your code after interacting with the bot.
+          To get your code for <strong>{fullPhoneNumber}</strong>:
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="space-y-3 text-center">
-            <p className="text-sm text-foreground">1. Click below or scan the QR code to open our Telegram bot and get your code:</p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <div className="space-y-3 text-left">
+            <p className="text-sm text-foreground flex items-start">
+                <span className="font-semibold mr-2">1.</span> Open our Telegram bot:
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center my-2">
                 <Button asChild variant="outline">
                     <a href={telegramAppUrl} target="_blank" rel="noopener noreferrer">
                         <BotMessageSquare className="mr-2 h-4 w-4" /> Open in Telegram App
@@ -142,25 +144,31 @@ function VerifyTelegramContent() {
                     </a>
                 </Button>
             </div>
-        </div>
-
-        <div className="space-y-3 text-center">
-            <div className="flex justify-center">
+             <div className="flex justify-center my-3">
                 <Image
                     src={qrCodeUrl}
                     alt={`QR Code for Telegram bot ${TELEGRAM_BOT_USERNAME}`}
-                    width={180}
-                    height={180}
+                    width={150}
+                    height={150}
                     className="rounded-md border shadow-md"
                     data-ai-hint="qr code"
                 />
             </div>
+            <p className="text-sm text-foreground flex items-start">
+                <span className="font-semibold mr-2">2.</span> In the bot, type and send the command: <code className="bg-muted px-1.5 py-0.5 rounded-sm text-sm mx-1">/receive</code>
+            </p>
+             <p className="text-sm text-foreground flex items-start">
+                <span className="font-semibold mr-2">3.</span> The bot will ask for your phone number. Reply with: <code className="bg-muted px-1.5 py-0.5 rounded-sm text-sm mx-1">{fullPhoneNumber}</code>
+            </p>
+            <p className="text-sm text-foreground flex items-start">
+                <span className="font-semibold mr-2">4.</span> The bot will then send you the 6-digit code.
+            </p>
         </div>
         
         <hr className="my-6 border-border" />
 
         <div>
-             <p className="text-sm text-foreground text-center mb-3">2. Enter the 6-digit code you receive from the bot:</p>
+             <p className="text-sm text-foreground text-center mb-3">Enter the 6-digit code from the bot:</p>
             <Form {...codeForm}>
                 <form
                     action={(formData) => {
@@ -230,4 +238,3 @@ export default function VerifyTelegramPage() {
     </main>
   );
 }
-
