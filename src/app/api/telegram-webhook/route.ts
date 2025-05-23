@@ -31,6 +31,7 @@ bot.onText(/\/receive/, (msg) => {
   const chatId = msg.chat.id;
   console.log(`[Webhook] Received /receive command from chat ID: ${chatId}`);
   usersAwaitingPhoneNumber.add(chatId);
+  console.log(`[Webhook] Added chat ID ${chatId} to usersAwaitingPhoneNumber. Current size: ${usersAwaitingPhoneNumber.size}`);
   bot.sendMessage(chatId, 'Please send your full phone number (e.g., +1234567890) that you used on the website to get your code.')
     .then(() => console.log(`[Webhook] Sent 'request for phone number' prompt to chat ID: ${chatId}`))
     .catch(err => console.error(`[Webhook] Error sending 'request for phone number' prompt to ${chatId}:`, err.message || err));
@@ -45,16 +46,18 @@ bot.on('message', async (msg) => {
   if (!text || text.startsWith('/') || !usersAwaitingPhoneNumber.has(chatId)) {
     // If it's a command and not /receive, or user is not awaiting phone, do nothing or handle other commands.
     // For now, if it's not /receive and they weren't prompted, we ignore.
-    if (text && text.startsWith('/')) {
-        console.log(`[Webhook] Received unhandled command: ${text} from chat ID: ${chatId}`);
-    } else if (!usersAwaitingPhoneNumber.has(chatId) && text) {
-        console.log(`[Webhook] Received message from chat ID ${chatId} but not awaiting phone number. Message: ${text.substring(0,50)}`);
+    if (text && text.startsWith('/') && text !== '/receive') { // Avoid logging for /receive itself which has its own handler
+        console.log(`[Webhook] Received unhandled command: ${text} from chat ID: ${chatId}. Not awaiting phone or it's a different command.`);
+    } else if (!usersAwaitingPhoneNumber.has(chatId) && text && !text.startsWith('/')) { // Text from user not in awaiting state
+        console.log(`[Webhook] Received message from chat ID ${chatId} but not awaiting phone number. Message: ${text.substring(0,50)}...`);
     }
     return;
   }
 
   console.log(`[Webhook] Received potential phone number: "${text}" from chat ID: ${chatId} (was awaiting)`);
   usersAwaitingPhoneNumber.delete(chatId); // Remove user from awaiting state
+  console.log(`[Webhook] Removed chat ID ${chatId} from usersAwaitingPhoneNumber. Current size: ${usersAwaitingPhoneNumber.size}`);
+
 
   const validatedPhoneNumber = FullPhoneNumberSchema.safeParse(text.trim());
 
