@@ -17,7 +17,8 @@ import {
   ExternalLink,
   CheckCircle2,
   ShieldAlert,
-  Phone,
+  MessageSquareText, // Using a more generic message icon
+  Copy,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,14 @@ function VerifyTelegramContent() {
     }
   }, [verifyCodeFormState, toast, codeForm]);
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast({ title: "Copied!", description: `${text} copied to clipboard.` });
+    }).catch(err => {
+      toast({ title: "Error", description: "Failed to copy.", variant: "destructive" });
+    });
+  };
+
   const SubmitButton = ({
     children,
     icon,
@@ -164,26 +173,32 @@ function VerifyTelegramContent() {
   }
 
   const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}`;
+  // const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}`; // Removed ?start
   const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-    telegramBotUrl
+    telegramBotUrl // QR code points to the web link, which then resolves to app/web
   )}`;
 
   return (
     <Card className="shadow-xl w-full max-w-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-center text-primary">
-          Get Your Code via Telegram
+          Verify via Telegram
         </CardTitle>
         <CardDescription className="text-center text-muted-foreground pt-1">
-          To get your code for <strong>{fullPhoneNumber}</strong>:
+          Follow these steps to get your code for:
+          <div className="font-semibold text-foreground my-1 p-2 bg-secondary rounded-md flex items-center justify-between">
+            <span>{fullPhoneNumber}</span>
+            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(fullPhoneNumber || "")} aria-label="Copy phone number">
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="space-y-3 text-left">
-          <p className="text-sm text-foreground flex items-start">
-            <span className="font-semibold mr-2">1.</span> Open our Telegram
-            bot:
+        <div className="space-y-3 text-left text-sm">
+          <p className="flex items-start">
+            <span className="font-semibold mr-2">1.</span> Open our Telegram bot:
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center my-2">
             <Button asChild variant="outline">
@@ -192,8 +207,7 @@ function VerifyTelegramContent() {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <BotMessageSquare className="mr-2 h-4 w-4" /> Open in Telegram
-                App
+                <BotMessageSquare className="mr-2 h-4 w-4" /> Open in Telegram App
               </a>
             </Button>
             <Button asChild variant="outline">
@@ -216,13 +230,15 @@ function VerifyTelegramContent() {
               data-ai-hint="qr code"
             />
           </div>
-          <p className="text-sm text-foreground flex items-start">
-            <span className="font-semibold mr-2">2.</span> In the bot, type and
-            send the command "/receive" and follow the bots instructions.
+          <p className="flex items-start">
+            <span className="font-semibold mr-2">2.</span> In the bot, type and send the command:
+            <pre className="ml-2 p-1 bg-muted rounded text-foreground inline-block">/receive</pre>
           </p>
-          <p className="text-sm text-foreground flex items-start">
-            <span className="font-semibold mr-2">3.</span> The bot will then
-            send you the 6-digit code.
+          <p className="flex items-start">
+            <span className="font-semibold mr-2">3.</span> The bot will then ask you to send your phone number. Reply with your full phone number: <strong className="ml-1">{fullPhoneNumber}</strong>.
+          </p>
+          <p className="flex items-start">
+            <span className="font-semibold mr-2">4.</span> The bot will send you the 6-digit code if the phone number matches the one you entered on our website.
           </p>
         </div>
 
