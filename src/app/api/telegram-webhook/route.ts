@@ -1,138 +1,191 @@
-
 // src/app/api/telegram-webhook/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import TelegramBot from 'node-telegram-bot-api';
-import axios from 'axios';
-import { FullPhoneNumberSchema } from '@/lib/verification-shared'; // For phone number validation
+import { NextRequest, NextResponse } from "next/server";
+import TelegramBot from "node-telegram-bot-api";
+import axios from "axios";
+import { FullPhoneNumberSchema } from "@/lib/verification-shared"; // For phone number validation
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
 if (!token) {
-  console.error('CRITICAL: TELEGRAM_BOT_TOKEN is not defined in .env. The bot will not work.');
+  console.error(
+    "CRITICAL: TELEGRAM_BOT_TOKEN is not defined in .env. The bot will not work."
+  );
 }
 if (!appUrl) {
-  console.error('CRITICAL: NEXT_PUBLIC_APP_URL is not defined in .env. The bot may not be able to call its own API.');
+  console.error(
+    "CRITICAL: NEXT_PUBLIC_APP_URL is not defined in .env. The bot may not be able to call its own API."
+  );
 }
 
-const bot = new TelegramBot(token || 'DUMMY_TOKEN_INITIALIZATION_WILL_FAIL_LATER');
+const bot = new TelegramBot(
+  token || "DUMMY_TOKEN_INITIALIZATION_WILL_FAIL_LATER"
+);
 if (token) {
-  console.log('Telegram bot initialized with a token.');
+  console.log("Telegram bot initialized with a token.");
 } else {
-  console.error('Telegram bot initialized WITHOUT a token. Please set TELEGRAM_BOT_TOKEN.');
+  console.error(
+    "Telegram bot initialized WITHOUT a token. Please set TELEGRAM_BOT_TOKEN."
+  );
 }
 
-// Temporary store for users awaiting phone number input after /receive
-// In a real app, use a persistent store (Redis, DB) if expecting concurrent users or across server restarts.
-const usersAwaitingPhoneNumber = new Set<number>(); // Stores chat_id
+// Add a map to track which chat is awaiting a phone number
+const awaitingPhoneNumber: Record<number, boolean> = {};
 
-// Handler for /receive command
-bot.onText(/\/receive/, (msg) => {
+// Handler for /receive command - now prompts for phone number
+bot.onText(/\/receive/, async (msg) => {
   const chatId = msg.chat.id;
-  console.log(`[Webhook] Received /receive command from chat ID: ${chatId}`);
-  usersAwaitingPhoneNumber.add(chatId);
-  console.log(`[Webhook] Added chat ID ${chatId} to usersAwaitingPhoneNumber. Bot will now wait for user to send phone number. Current size: ${usersAwaitingPhoneNumber.size}`);
-  // No explicit message sent back to user asking for phone number here. User instructions on web page cover this.
+  console.log(`[Webhook] /receive command received from chat ID: ${chatId}`);
+  awaitingPhoneNumber[chatId] = true;
+  bot.sendMessage(
+    chatId,
+    "Please enter your phone number (e.g., +1234567890):"
+  );
 });
 
-// Handler for general messages (potentially phone numbers after /receive)
-bot.on('message', async (msg) => {
+// Handler for all messages to check if awaiting phone number
+bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text;
+  // Ignore messages that are commands
+  if (msg.text && msg.text.startsWith("/")) return;
+  if (!awaitingPhoneNumber[chatId]) return;
 
-  // Ignore if it's a command or if user is not in the "awaiting phone number" state
-  if (!text || text.startsWith('/') || !usersAwaitingPhoneNumber.has(chatId)) {
-    if (text && text.startsWith('/') && text !== '/receive') {
-        console.log(`[Webhook] Received unhandled command: ${text} from chat ID: ${chatId}. Not awaiting phone or it's a different command.`);
-    } else if (!usersAwaitingPhoneNumber.has(chatId) && text && !text.startsWith('/')) {
-        console.log(`[Webhook] Received message from chat ID ${chatId} but not awaiting phone number. Message: ${text.substring(0,50)}...`);
-    }
-    return;
-  }
+  const phoneNumber = msg.text?.trim();
+  console.log(
+    `[Webhook] Received phone number input from chat ID: ${chatId}: ${phoneNumber}`
+  );
 
-  console.log(`[Webhook] Received potential phone number: "${text}" from chat ID: ${chatId} (was awaiting)`);
-  usersAwaitingPhoneNumber.delete(chatId); // Remove user from awaiting state, regardless of phone validity
-  console.log(`[Webhook] Removed chat ID ${chatId} from usersAwaitingPhoneNumber. Current size: ${usersAwaitingPhoneNumber.size}`);
-
-
-  const validatedPhoneNumber = FullPhoneNumberSchema.safeParse(text.trim());
-
+  // Validate phone number
+  const validatedPhoneNumber = FullPhoneNumberSchema.safeParse(phoneNumber);
   if (!validatedPhoneNumber.success) {
-    const replyMessage = 'Invalid phone number format. Please ensure you send your full international phone number (e.g., +1234567890). If you need to try again, start with the /receive command.';
-    bot.sendMessage(chatId, replyMessage)
-      .then(() => console.log(`[Webhook] Sent 'invalid phone format' message to chat ID: ${chatId} for input: ${text}`))
-      .catch(err => console.error(`[Webhook] Error sending 'invalid phone format' message to ${chatId}:`, err.message || err));
+    bot.sendMessage(
+      chatId,
+      "Invalid phone number format. Please ensure you send your full international phone number (e.g., +1234567890). Try again:"
+    );
     return;
   }
 
-  const phoneNumber = validatedPhoneNumber.data;
+  // Remove from awaiting state
+  delete awaitingPhoneNumber[chatId];
 
-  bot.sendMessage(chatId, `Thanks! Fetching code for ${phoneNumber}...`)
-    .catch(err => console.error(`[Webhook] Error sending 'Thanks' message to ${chatId}:`, err.message || err));
+  // Inform user
+  bot.sendMessage(chatId, `Fetching code for ${validatedPhoneNumber.data}...`);
 
+  if (!appUrl) {
+    bot.sendMessage(
+      chatId,
+      "Sorry, the application is not configured correctly to fetch your code."
+    );
+    return;
+  }
+
+  const apiUrl = `${appUrl}/api/get-verification-code?phoneNumber=${encodeURIComponent(
+    validatedPhoneNumber.data
+  )}&chatId=${chatId}`;
   try {
-    if (!appUrl) {
-      console.error('[Webhook] CRITICAL: NEXT_PUBLIC_APP_URL is not defined. Cannot call API to get verification code.');
-      bot.sendMessage(chatId, 'Sorry, the application is not configured correctly to fetch your code.')
-        .catch(err => console.error(`[Webhook] Error sending app_url error message to ${chatId}:`, err.message || err));
-      return;
-    }
-    const apiUrl = `${appUrl}/api/get-verification-code?phoneNumber=${encodeURIComponent(phoneNumber)}`;
-    console.log(`[Webhook] Calling API: ${apiUrl} for chat ID: ${chatId}`);
-    
     const response = await axios.get(apiUrl);
-    console.log(`[Webhook] API response for ${phoneNumber} (chat ID: ${chatId}):`, JSON.stringify(response.data, null, 2));
-    
-    if (response.data && response.data.success && response.data.verificationCode) {
-      bot.sendMessage(chatId, `Your verification code is: ${response.data.verificationCode}`)
-        .then(() => console.log(`[Webhook] Sent verification code to chat ID: ${chatId}`))
-        .catch(err => console.error(`[Webhook] Error sending verification code to ${chatId}:`, err.message || err));
+    if (
+      response.data &&
+      response.data.success &&
+      response.data.verificationCode
+    ) {
+      bot.sendMessage(
+        chatId,
+        `Your verification code is: ${response.data.verificationCode}`
+      );
     } else {
-      const replyMessage = response.data.message || 'Could not retrieve your code. Please ensure you entered the correct phone number and try requesting one from the website again (start with /receive in the bot).';
-      bot.sendMessage(chatId, replyMessage)
-        .then(() => console.log(`[Webhook] Sent '${replyMessage.substring(0,30)}...' message to chat ID: ${chatId}`))
-        .catch(err => console.error(`[Webhook] Error sending 'could not retrieve' message to ${chatId}:`, err.message || err));
+      const replyMessage =
+        response.data.message ||
+        "No verification code found. Please go to our website first, enter your phone number, and request a verification code. Then come back here to get it.";
+      bot.sendMessage(chatId, replyMessage);
     }
   } catch (error: any) {
-    console.error(`[Webhook] Error fetching/processing verification code for bot (chat ID: ${chatId}, phone: ${phoneNumber}):`, error.message || error);
-    if (axios.isAxiosError(error) && error.response) {
-      console.error('[Webhook] Axios error response data:', JSON.stringify(error.response.data, null, 2));
-      console.error('[Webhook] Axios error response status:', error.response.status);
-    }
-    bot.sendMessage(chatId, 'Sorry, there was an error trying to get your verification code. Please ensure you used the /receive command first, then sent your phone number, and try requesting a code from the website again if needed.')
-      .catch(err => console.error(`[Webhook] Error sending general error message to ${chatId}:`, err.message || err));
+    bot.sendMessage(
+      chatId,
+      "Sorry, there was an error trying to get your verification code. Please make sure you've requested a code from our website first, then try again here."
+    );
   }
 });
 
-bot.on('polling_error', (error) => {
-  console.error('[Webhook] Telegram Bot Polling Error (should not occur with webhooks):', error.code, error.message);
+bot.on("polling_error", (error: any) => {
+  console.error(
+    "[Webhook] Telegram Bot Polling Error (should not occur with webhooks):",
+    error.code || "unknown",
+    error.message || error
+  );
 });
 
-bot.on('webhook_error', (error) => {
-  console.error('[Webhook] Telegram Bot Webhook Error:', error.code, error.message); 
+bot.on("webhook_error", (error: any) => {
+  console.error(
+    "[Webhook] Telegram Bot Webhook Error:",
+    error.code || "unknown",
+    error.message || error
+  );
 });
 
 export async function POST(request: NextRequest) {
-  console.log('[Webhook] Received POST request on /api/telegram-webhook');
+  console.log("[Webhook] Received POST request on /api/telegram-webhook");
+  console.log(
+    "[Webhook] Request headers:",
+    Object.fromEntries(request.headers.entries())
+  );
+
   if (!token) {
-      console.error("[Webhook] CRITICAL: TELEGRAM_BOT_TOKEN is not set. Cannot process webhook update.");
-      return NextResponse.json({ status: 'error', message: 'Bot token not configured on server' }, { status: 500 });
+    console.error(
+      "[Webhook] CRITICAL: TELEGRAM_BOT_TOKEN is not set. Cannot process webhook update."
+    );
+    return NextResponse.json(
+      { status: "error", message: "Bot token not configured on server" },
+      { status: 500 }
+    );
   }
+
   try {
     const update = await request.json();
-    console.log('[Webhook] Update received:', JSON.stringify(update, null, 2));
+    console.log(
+      "[Webhook] Raw update received:",
+      JSON.stringify(update, null, 2)
+    );
+
+    // Log specific parts of the update that we care about
+    if (update.message) {
+      console.log("[Webhook] Message details:", {
+        chatId: update.message.chat?.id,
+        text: update.message.text,
+        from: update.message.from?.username,
+        date: new Date(update.message.date * 1000).toISOString(),
+      });
+    }
+
     bot.processUpdate(update);
-    return NextResponse.json({ status: 'ok' });
+    return NextResponse.json({ status: "ok" });
   } catch (error: any) {
-    console.error('[Webhook] Error processing Telegram update in POST handler:', error.message || error);
-    return NextResponse.json({ status: 'error', message: 'Failed to process update' }, { status: 500 });
+    console.error(
+      "[Webhook] Error processing Telegram update in POST handler:",
+      error.message || error
+    );
+    return NextResponse.json(
+      { status: "error", message: "Failed to process update" },
+      { status: 500 }
+    );
   }
 }
 
 export async function GET(request: NextRequest) {
-  console.log('[Webhook] Received GET request on /api/telegram-webhook (typically for health check or initial setup).');
+  console.log(
+    "[Webhook] Received GET request on /api/telegram-webhook (typically for health check or initial setup)."
+  );
   if (!token) {
-    return NextResponse.json({ message: 'Telegram webhook is active, but bot token is NOT configured on the server.' }, {status: 500});
+    return NextResponse.json(
+      {
+        message:
+          "Telegram webhook is active, but bot token is NOT configured on the server.",
+      },
+      { status: 500 }
+    );
   }
-  return NextResponse.json({ message: 'Telegram webhook is active and bot token seems to be configured. Use POST for updates from Telegram.' });
+  return NextResponse.json({
+    message:
+      "Telegram webhook is active and bot token seems to be configured. Use POST for updates from Telegram.",
+  });
 }
