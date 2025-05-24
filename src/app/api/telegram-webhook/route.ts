@@ -2,7 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import TelegramBot from "node-telegram-bot-api";
 import axios from "axios";
-import { FullPhoneNumberSchema } from "@/lib/verification-shared"; // For phone number validation
+import {
+  FullPhoneNumberSchema,
+  verificationStore,
+} from "@/lib/verification-shared"; // Import verificationStore from the correct path
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -89,6 +92,16 @@ bot.on("message", async (msg) => {
       response.data.success &&
       response.data.verificationCode
     ) {
+      // Update the chat ID in the verification store
+      const attempt = verificationStore.get(validatedPhoneNumber.data);
+      if (attempt && attempt.telegramChatId === -1) {
+        attempt.telegramChatId = chatId;
+        verificationStore.set(validatedPhoneNumber.data, attempt);
+        console.log(
+          `[Webhook] Updated chat ID for ${validatedPhoneNumber.data} to ${chatId}`
+        );
+      }
+
       bot.sendMessage(
         chatId,
         `Your verification code is: ${response.data.verificationCode}`
