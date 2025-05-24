@@ -218,10 +218,7 @@ function VerifyTelegramContent() {
           </div>
           <p className="text-sm text-foreground flex items-start">
             <span className="font-semibold mr-2">2.</span> In the bot, type and
-            send the command with your phone number:{" "}
-            <code className="bg-muted px-1.5 py-0.5 rounded-sm text-sm mx-1">
-              /receive {fullPhoneNumber}
-            </code>
+            send the command "/receive" and follow the bots instructions.
           </p>
           <p className="text-sm text-foreground flex items-start">
             <span className="font-semibold mr-2">3.</span> The bot will then
