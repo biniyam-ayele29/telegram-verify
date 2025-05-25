@@ -11,7 +11,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check-webhook": "tsx src/scripts/check-webhook.ts",
-    "setup-webhook": "curl -X GET ${NEXT_PUBLIC_APP_URL}/api/set-telegram-webhook"
+    "setup-webhook": "tsx src/scripts/verify-webhook.ts"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",

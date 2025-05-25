@@ -27,9 +27,8 @@ const nextConfig: NextConfig = {
   // Allow requests from ngrok domains during development
   experimental: {
     allowedDevOrigins: [
-      "c056-196-189-152-134.ngrok-free.app",
-      // Add a wildcard pattern to allow any ngrok domain
-      "*.ngrok-free.app",
+      "https://a792-196-189-152-125.ngrok-free.app",
+      "https://*.ngrok-free.app",
     ],
   },
 };
