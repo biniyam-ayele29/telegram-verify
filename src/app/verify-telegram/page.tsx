@@ -17,7 +17,7 @@ import {
   ExternalLink,
   CheckCircle2,
   ShieldAlert,
-  MessageSquareText, // Using a more generic message icon
+  MessageSquareText, 
   Copy,
 } from "lucide-react";
 
@@ -44,7 +44,7 @@ import { verifyCodeAction, type ActionFormState } from "@/lib/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { TeleVerifyLogo } from "@/components/icons/logo";
 
-const TELEGRAM_BOT_USERNAME = "Firegebeyaouthbot"; // Your bot's username
+const TELEGRAM_BOT_USERNAME = "Firegebeyaouthbot"; 
 
 const codeSchema = z.object({
   verificationCode: z
@@ -79,7 +79,7 @@ function VerifyTelegramContent() {
         description: "Phone number missing. Please start over.",
         variant: "destructive",
       });
-      router.push("/"); // Redirect if no phone number
+      router.push("/"); 
     }
   }, [fullPhoneNumber, router, toast]);
 
@@ -114,6 +114,7 @@ function VerifyTelegramContent() {
   }, [verifyCodeFormState, toast, codeForm]);
 
   const copyToClipboard = (text: string) => {
+    if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
       toast({ title: "Copied!", description: `${text} copied to clipboard.` });
     }).catch(err => {
@@ -173,10 +174,9 @@ function VerifyTelegramContent() {
   }
 
   const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}`;
-  // const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}`; // Removed ?start
   const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-    telegramBotUrl // QR code points to the web link, which then resolves to app/web
+    telegramBotUrl 
   )}`;
 
   return (
@@ -232,13 +232,13 @@ function VerifyTelegramContent() {
           </div>
           <p className="flex items-start">
             <span className="font-semibold mr-2">2.</span> In the bot, type and send the command:
-            <pre className="ml-2 p-1 bg-muted rounded text-foreground inline-block">/receive</pre>
+            <code className="ml-2 p-1 bg-muted rounded text-foreground inline-block font-mono">/receive</code>
           </p>
           <p className="flex items-start">
-            <span className="font-semibold mr-2">3.</span> The bot will then ask you to send your phone number. Reply with your full phone number: <strong className="ml-1">{fullPhoneNumber}</strong>.
+            <span className="font-semibold mr-2">3.</span> The bot will then expect your phone number. Send your full phone number as a new message: <strong className="ml-1">{fullPhoneNumber}</strong>.
           </p>
           <p className="flex items-start">
-            <span className="font-semibold mr-2">4.</span> The bot will send you the 6-digit code if the phone number matches the one you entered on our website.
+            <span className="font-semibold mr-2">4.</span> If the phone number matches the one you entered here, the bot will send you the 6-digit code.
           </p>
         </div>
 
