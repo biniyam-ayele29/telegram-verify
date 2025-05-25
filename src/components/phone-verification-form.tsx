@@ -97,7 +97,7 @@ export function PhoneVerificationForm() {
         }
       }
     }
-  }, [sendCodeFormState, toast, router, phoneForm]);
+  }, [sendCodeFormState, toast, router]); // Removed phoneForm from dependencies
 
   const SubmitButton = ({ children, icon }: { children: React.ReactNode, icon?: React.ReactNode }) => {
     const { pending } = useFormStatus();
@@ -124,9 +124,10 @@ export function PhoneVerificationForm() {
                   <Select
                     onValueChange={field.onChange}
                     value={field.value}
-                    name={field.name} // Ensure name is passed for form data if not handled by hidden input alone
+                    // name={field.name} // name is on hidden input
                   >
                     <FormControl>
+                      {/* FormControl wraps the SelectTrigger for proper id and aria linking */}
                       <SelectTrigger className="pl-10" ref={field.ref}>
                         <SelectValue placeholder="Select country" />
                       </SelectTrigger>
@@ -140,7 +141,6 @@ export function PhoneVerificationForm() {
                     </SelectContent>
                   </Select>
                   {/* This hidden input ensures the value is submitted with FormData for server actions */}
-                  {/* Using field.name and field.value directly. {...field} would also work but is less explicit here. */}
                   <input type="hidden" name={field.name} value={field.value} />
                 </div>
                 <FormMessage />
