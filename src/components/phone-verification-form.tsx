@@ -2,7 +2,7 @@
 // src/components/phone-verification-form.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect }  from "react";
 import { useActionState } from "react"; // Correct hook for React 19+
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
@@ -72,32 +72,55 @@ export function PhoneVerificationForm() {
     defaultValues: { countryCode: "+251", localPhoneNumber: "" }, // Default to Ethiopia
   });
 
+  // Effect for successful action and redirection
   useEffect(() => {
-    if (sendCodeFormState?.message) { // A message exists from the action
-      if (sendCodeFormState.success && sendCodeFormState.redirectUrl) {
-        if (sendCodeFormState.toastMessage) {
-          toast({ title: "Notice", description: sendCodeFormState.toastMessage, variant: "default" });
+    console.log("[PhoneVerificationForm SUCCESS_EFFECT] Checking state:", JSON.stringify(sendCodeFormState));
+    if (sendCodeFormState?.success && sendCodeFormState?.redirectUrl) {
+      console.log(`[PhoneVerificationForm SUCCESS_EFFECT] Success! Redirecting to: ${sendCodeFormState.redirectUrl}. Toast: ${sendCodeFormState.toastMessage}`);
+      const urlToRedirect = sendCodeFormState.redirectUrl; // Capture before toast
+      
+      if (sendCodeFormState.toastMessage) {
+        toast({ title: "Notice", description: sendCodeFormState.toastMessage, variant: "default" });
+      }
+      router.push(urlToRedirect); // Use captured URL
+    }
+  }, [sendCodeFormState, toast, router]);
+
+  // Effect for error handling
+  useEffect(() => {
+    console.log("[PhoneVerificationForm ERROR_EFFECT] Checking state:", JSON.stringify(sendCodeFormState));
+    if (sendCodeFormState && !sendCodeFormState.success && sendCodeFormState.message) {
+        // Prevent running for the truly initial state if its message is an empty string
+        // and no other error indicators (like field or toastMessage) are present.
+        if (sendCodeFormState.message === "" && !sendCodeFormState.field && !sendCodeFormState.toastMessage) {
+            // This is likely the initial state, do nothing for errors.
+            console.log("[PhoneVerificationForm ERROR_EFFECT] Initial state, no error processing.");
+            return;
         }
-        router.push(sendCodeFormState.redirectUrl);
-      } else if (!sendCodeFormState.success) {
+
+        console.log(`[PhoneVerificationForm ERROR_EFFECT] Error state. Message: ${sendCodeFormState.message}. Field: ${sendCodeFormState.field}`);
         const messageToDisplay = sendCodeFormState.toastMessage || sendCodeFormState.message;
         toast({
           title: "Error",
           description: messageToDisplay,
           variant: "destructive",
         });
+
         if (sendCodeFormState.field) {
-          if (sendCodeFormState.field === "countryCode" || sendCodeFormState.field === "localPhoneNumber") {
-             phoneForm.setError(sendCodeFormState.field as "countryCode" | "localPhoneNumber", { type: "manual", message: sendCodeFormState.message });
+          const fieldName = sendCodeFormState.field as "countryCode" | "localPhoneNumber" | "root.serverError";
+          if (fieldName === "countryCode" || fieldName === "localPhoneNumber") {
+            phoneForm.setError(fieldName, { type: "manual", message: sendCodeFormState.message });
           } else {
-             phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
+            // For "root.serverError" or any other unexpected field string
+            phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
           }
         } else {
+            // If there's an error message but no specific field, show it as a root error
             phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
         }
-      }
     }
-  }, [sendCodeFormState, toast, router]); // Removed phoneForm from dependencies
+  }, [sendCodeFormState, toast, phoneForm]);
+
 
   const SubmitButton = ({ children, icon }: { children: React.ReactNode, icon?: React.ReactNode }) => {
     const { pending } = useFormStatus();
@@ -118,17 +141,18 @@ export function PhoneVerificationForm() {
             name="countryCode"
             render={({ field }) => (
               <FormItem className="w-2/5">
-                <FormLabel>Country</FormLabel>
+                <FormLabel htmlFor="countryCode">Country</FormLabel>
                 <div className="relative">
                   <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none z-10" />
+                  {/* Select component itself for display and interaction */}
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value}
-                    // name={field.name} // name is on hidden input
+                    value={field.value} // Controlled component
+                    name={`${field.name}-display`} // Different name to avoid conflict if FormData picks it up directly
                   >
                     <FormControl>
                       {/* FormControl wraps the SelectTrigger for proper id and aria linking */}
-                      <SelectTrigger className="pl-10" ref={field.ref}>
+                      <SelectTrigger id="countryCode" className="pl-10" ref={field.ref}>
                         <SelectValue placeholder="Select country" />
                       </SelectTrigger>
                     </FormControl>
@@ -152,7 +176,7 @@ export function PhoneVerificationForm() {
             name="localPhoneNumber"
             render={({ field }) => (
               <FormItem className="w-3/5">
-                <FormLabel>Phone Number</FormLabel>
+                <FormLabel htmlFor="localPhoneNumber">Phone Number</FormLabel>
                 <div className="relative">
                   <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <FormControl>
@@ -178,3 +202,4 @@ export function PhoneVerificationForm() {
     </Form>
   );
 }
+
