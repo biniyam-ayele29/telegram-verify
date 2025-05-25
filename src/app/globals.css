@@ -14,6 +14,8 @@
     --popover-foreground: 210 40% 10%;
 
     --primary: 204 88% 71%; /* Calm Blue #64B5F6 */
+    --primary-hover: 204 88% 56%; /* Significantly darker for hover */
+    --primary-active: 204 88% 50%; /* Even darker for active */
     --primary-foreground: 210 100% 98%; /* White-ish for good contrast on primary */
 
     --secondary: 207 90% 88%; /* Slightly darker shade of background */
@@ -61,6 +63,8 @@
     --popover-foreground: 210 40% 95%;
 
     --primary: 204 88% 71%; /* Keep primary color same */
+    --primary-hover: 204 88% 56%; /* Significantly darker for hover */
+    --primary-active: 204 88% 50%; /* Even darker for active */
     --primary-foreground: 204 88% 15%; /* Darker blue for text on primary */
 
     --secondary: 210 40% 15%;
@@ -99,7 +103,10 @@
     @apply bg-background text-foreground;
     /* font-family removed to allow Next/font from layout.tsx to take precedence */
   }
-  input, textarea, select, button {
+  input,
+  textarea,
+  select,
+  button {
     @apply border-input-border; /* Apply custom input border */
   }
 }
