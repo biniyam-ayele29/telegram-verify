@@ -11,11 +11,16 @@ export interface VerificationAttempt {
   telegramChatId: number;
 }
 
-// In a real app, use a persistent store like Redis or a database.
-export const verificationStore = new Map<string, VerificationAttempt>();
-
+// Constants for verification
 export const CODE_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutes
 export const MAX_VERIFICATION_ATTEMPTS = 3;
+
+// Schema for phone number validation
+export const FullPhoneNumberSchema = z
+  .string()
+  .min(10, "Phone number is too short.")
+  .max(15, "Phone number is too long.")
+  .regex(/^\+\d+$/, "Phone number must start with + followed by digits only.");
 
 // Schema for individual parts, used by the form
 export const PartialPhoneSchema = z.object({
@@ -30,16 +35,6 @@ export const PartialPhoneSchema = z.object({
     .max(14, "Local phone number is too long.")
     .regex(/^\d+$/, "Local phone number must contain only digits."),
 });
-
-// Schema for the combined full phone number
-export const FullPhoneNumberSchema = z
-  .string()
-  .min(8, "Full phone number is too short (country code + local number).")
-  .max(19, "Full phone number is too long.")
-  .regex(
-    /^\+\d{8,18}$/,
-    "Invalid full phone number format (e.g., +11234567890)."
-  );
 
 // Schema for the verification code input
 export const VerificationCodeSchema = z

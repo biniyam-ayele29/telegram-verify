@@ -11,6 +11,12 @@ import {
   FullPhoneNumberSchema,
   VerificationCodeSchema,
 } from "./verification-shared"; // Import from the new shared file
+import {
+  storeVerificationCode,
+  getVerificationCode,
+  updateVerificationCode,
+  deleteVerificationCode,
+} from "./firestore-operations";
 
 // ActionFormState remains here as it's specific to the actions
 export interface ActionFormState {
@@ -25,50 +31,37 @@ export async function sendCodeAction(
   prevState: ActionFormState,
   formData: FormData
 ): Promise<ActionFormState> {
-  console.log(
-    "[sendCodeAction] Received form data:",
-    Object.fromEntries(formData.entries())
-  );
-  const countryCode = (formData.get("countryCode") as string | null) ?? "";
-  const localPhoneNumber =
-    (formData.get("localPhoneNumber") as string | null) ?? "";
+  console.log("[sendCodeAction] Starting code generation process...");
 
-  const partialValidation = PartialPhoneSchema.safeParse({
-    countryCode,
-    localPhoneNumber,
-  });
-  if (!partialValidation.success) {
-    const firstError = partialValidation.error.errors[0];
-    const field = firstError.path.includes("countryCode")
-      ? "countryCode"
-      : "localPhoneNumber";
-    console.error(
-      "[sendCodeAction] Partial phone validation failed:",
-      firstError.message,
-      "for field:",
-      field
-    );
-    return { success: false, message: firstError.message, field };
+  const countryCode = formData.get("countryCode") as string;
+  const localPhoneNumber = formData.get("localPhoneNumber") as string;
+
+  if (!countryCode || !localPhoneNumber) {
+    console.error("[sendCodeAction] Missing phone number components");
+    return {
+      success: false,
+      message: "Phone number components are missing.",
+      field: !countryCode ? "countryCode" : "localPhoneNumber",
+      toastMessage: "Please provide both country code and phone number.",
+    };
   }
 
-  const fullPhoneNumberInput = countryCode + localPhoneNumber;
+  const fullPhoneNumber = `${countryCode}${localPhoneNumber}`;
+  console.log(`[sendCodeAction] Processing phone number: ${fullPhoneNumber}`);
 
-  const fullValidation = FullPhoneNumberSchema.safeParse(fullPhoneNumberInput);
-  if (!fullValidation.success) {
-    const errorMessage =
-      "Invalid combined phone number: " +
-      fullValidation.error.errors[0].message;
+  const validationResult = FullPhoneNumberSchema.safeParse(fullPhoneNumber);
+  if (!validationResult.success) {
     console.error(
-      "[sendCodeAction] Full phone validation failed:",
-      errorMessage
+      `[sendCodeAction] Invalid phone number format: ${fullPhoneNumber}. Error: ${validationResult.error.errors[0].message}`
     );
-    return { success: false, message: errorMessage, field: "localPhoneNumber" };
+    return {
+      success: false,
+      message: validationResult.error.errors[0].message,
+      field: "localPhoneNumber",
+      toastMessage: "Please enter a valid phone number.",
+    };
   }
-  const fullPhoneNumber = fullValidation.data; // Use the validated data as the key
 
-  console.log(
-    `[sendCodeAction] Attempting to generate code for: ${fullPhoneNumber}`
-  );
   try {
     const aiResponse: GenerateVerificationCodeOutput =
       await generateVerificationCode({ fullPhoneNumber });
@@ -85,12 +78,11 @@ export async function sendCodeAction(
         attemptsRemaining: MAX_VERIFICATION_ATTEMPTS,
         telegramChatId: -1, // Initialize as -1 to indicate it hasn't been set yet
       };
-      verificationStore.set(fullPhoneNumber, storedCodeData);
+
+      await storeVerificationCode(fullPhoneNumber, storedCodeData);
       console.log(
-        `[sendCodeAction] Stored verification data for ${fullPhoneNumber}. Code: ${aiResponse.verificationCode}. Store size: ${verificationStore.size}`
+        `[sendCodeAction] Stored verification data for ${fullPhoneNumber}. Code: ${aiResponse.verificationCode}`
       );
-      // Log current store contents for debugging (can be noisy)
-      // console.log("[sendCodeAction] Current verificationStore contents:", Object.fromEntries(verificationStore.entries()));
 
       return {
         success: true,
@@ -114,24 +106,16 @@ export async function sendCodeAction(
           "Could not prepare verification. Please try again.",
       };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(
-      `[sendCodeAction] Error calling Genkit flow for ${fullPhoneNumber}:`,
-      error
+      `[sendCodeAction] Error in code generation process for ${fullPhoneNumber}:`,
+      error.message || error
     );
-    let errorMessage =
-      "An unexpected error occurred while preparing verification.";
-    if (error instanceof Error) {
-      console.error(
-        "[sendCodeAction] Genkit flow error details:",
-        error.message
-      );
-    }
     return {
       success: false,
-      message: errorMessage,
+      message: `Error in code generation: ${error.message || "Unknown error"}`,
       field: "localPhoneNumber",
-      toastMessage: "An unexpected error occurred. Please try again.",
+      toastMessage: "An error occurred. Please try again.",
     };
   }
 }
@@ -140,104 +124,82 @@ export async function verifyCodeAction(
   prevState: ActionFormState,
   formData: FormData
 ): Promise<ActionFormState> {
-  const fullPhoneNumberInput =
-    (formData.get("fullPhoneNumber") as string | null) ?? "";
-  const submittedCode =
-    (formData.get("verificationCode") as string | null) ?? "";
-  console.log(
-    `[verifyCodeAction] Attempting to verify code for phone: ${fullPhoneNumberInput}, code: ${submittedCode}`
-  );
+  const verificationCode = formData.get("verificationCode") as string;
+  const fullPhoneNumber = formData.get("fullPhoneNumber") as string;
 
-  if (!fullPhoneNumberInput) {
-    console.error("[verifyCodeAction] Phone number not provided.");
+  if (!verificationCode || !fullPhoneNumber) {
     return {
       success: false,
-      message: "Phone number not provided for verification.",
-      field: "verificationCode",
+      message: "Missing verification code or phone number.",
+      field: !verificationCode ? "verificationCode" : undefined,
+      toastMessage: "Please provide both verification code and phone number.",
     };
   }
-  const fullValidation = FullPhoneNumberSchema.safeParse(fullPhoneNumberInput);
-  if (!fullValidation.success) {
-    const errorMessage =
-      "Invalid phone number format provided for verification: " +
-      fullValidation.error.errors[0].message;
-    console.error("[verifyCodeAction]", errorMessage);
-    return { success: false, message: errorMessage, field: "verificationCode" };
-  }
-  const fullPhoneNumber = fullValidation.data;
 
-  const codeValidation = VerificationCodeSchema.safeParse(submittedCode);
-  if (!codeValidation.success) {
+  try {
+    const storedData = await getVerificationCode(fullPhoneNumber);
+
+    if (!storedData) {
+      return {
+        success: false,
+        message: "No verification code found for this phone number.",
+        field: "verificationCode",
+        toastMessage: "Please request a new verification code.",
+      };
+    }
+
+    if (storedData.attemptsRemaining <= 0) {
+      await deleteVerificationCode(fullPhoneNumber);
+      return {
+        success: false,
+        message: "Too many failed attempts. Please request a new code.",
+        field: "verificationCode",
+        toastMessage: "Too many failed attempts. Please request a new code.",
+      };
+    }
+
+    if (Date.now() > storedData.expiresAt) {
+      await deleteVerificationCode(fullPhoneNumber);
+      return {
+        success: false,
+        message: "Verification code has expired.",
+        field: "verificationCode",
+        toastMessage: "Code has expired. Please request a new one.",
+      };
+    }
+
+    if (verificationCode !== storedData.code) {
+      await updateVerificationCode(fullPhoneNumber, {
+        attemptsRemaining: storedData.attemptsRemaining - 1,
+      });
+
+      return {
+        success: false,
+        message: "Invalid verification code.",
+        field: "verificationCode",
+        toastMessage: `Invalid code. ${
+          storedData.attemptsRemaining - 1
+        } attempts remaining.`,
+      };
+    }
+
+    // Code is valid
+    await deleteVerificationCode(fullPhoneNumber);
+    return {
+      success: true,
+      message: "Phone number verified successfully!",
+      toastMessage: "Your phone number has been verified successfully!",
+    };
+  } catch (error: any) {
     console.error(
-      "[verifyCodeAction] Invalid code format:",
-      codeValidation.error.errors[0].message
+      `[verifyCodeAction] Error verifying code for ${fullPhoneNumber}:`,
+      error.message || error
     );
     return {
       success: false,
-      message: codeValidation.error.errors[0].message,
+      message: `Error verifying code: ${error.message || "Unknown error"}`,
       field: "verificationCode",
-    };
-  }
-
-  const attempt = verificationStore.get(fullPhoneNumber);
-  console.log(
-    `[verifyCodeAction] Retrieved attempt for ${fullPhoneNumber} from store:`,
-    attempt ? JSON.stringify(attempt) : "Not found"
-  );
-
-  if (!attempt) {
-    console.warn(
-      `[verifyCodeAction] No verification attempt found or expired for ${fullPhoneNumber}. Store size: ${verificationStore.size}`
-    );
-    return {
-      success: false,
-      message:
-        "No verification attempt found for this phone number, or it has expired. Please request a new code.",
-      field: "verificationCode",
-    };
-  }
-
-  if (Date.now() > attempt.expiresAt) {
-    console.warn(
-      `[verifyCodeAction] Verification code expired for ${fullPhoneNumber}. Expired at: ${new Date(
-        attempt.expiresAt
-      ).toISOString()}`
-    );
-    verificationStore.delete(fullPhoneNumber);
-    return {
-      success: false,
-      message: "Verification code has expired. Please request a new code.",
-      field: "verificationCode",
-    };
-  }
-
-  if (attempt.attemptsRemaining <= 0) {
-    console.warn(
-      `[verifyCodeAction] No attempts remaining for ${fullPhoneNumber}.`
-    );
-    return {
-      success: false,
-      message: "No attempts remaining. Please request a new code.",
-      field: "verificationCode",
-    };
-  }
-
-  if (submittedCode === attempt.code) {
-    console.log(
-      `[verifyCodeAction] Code verified successfully for ${fullPhoneNumber}.`
-    );
-    verificationStore.delete(fullPhoneNumber); // Clean up successful verification
-    return { success: true, message: "Phone number verified successfully!" };
-  } else {
-    attempt.attemptsRemaining -= 1;
-    verificationStore.set(fullPhoneNumber, attempt); // Update attempt count
-    console.warn(
-      `[verifyCodeAction] Invalid code for ${fullPhoneNumber}. Attempts remaining: ${attempt.attemptsRemaining}`
-    );
-    return {
-      success: false,
-      message: `Invalid verification code. ${attempt.attemptsRemaining} attempts remaining.`,
-      field: "verificationCode",
+      toastMessage: "An error occurred. Please try again.",
     };
   }
 }

@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /verificationCodes/{phoneNumber} {
+      // Allow read operations without validation
+      allow read: if true;
+      
+      // Validate write operations
+      allow write: if 
+        request.resource.data.keys().hasAll(['fullPhoneNumber', 'code', 'expiresAt', 'attemptsRemaining', 'telegramChatId'])
+        && request.resource.data.fullPhoneNumber == phoneNumber
+        && request.resource.data.code is string
+        && request.resource.data.expiresAt is number
+        && request.resource.data.attemptsRemaining is number
+        && request.resource.data.telegramChatId is number;
+    }
+  }
+}
