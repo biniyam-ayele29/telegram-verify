@@ -15,13 +15,23 @@ export async function GET(request: NextRequest) {
     `[/api/get-verification-code] Received request for phoneNumber: ${phoneNumberParam}, chatId: ${chatIdParam}`
   );
 
+  // Add CORS headers
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
+
   if (!phoneNumberParam) {
     console.error(
       "[/api/get-verification-code] Phone number query parameter is missing."
     );
     return NextResponse.json(
-      { success: false, message: "Phone number query parameter is required." },
-      { status: 400 }
+      { success: false, error: "Phone number query parameter is required." },
+      { status: 400, headers }
     );
   }
 
@@ -32,8 +42,8 @@ export async function GET(request: NextRequest) {
       `[/api/get-verification-code] Invalid phone number format: ${phoneNumberParam}. Error: ${validatedPhoneNumberResult.error.errors[0].message}`
     );
     return NextResponse.json(
-      { success: false, message: "Invalid phone number format." },
-      { status: 400 }
+      { success: false, error: "Invalid phone number format." },
+      { status: 400, headers }
     );
   }
   const validatedPhoneNumber = validatedPhoneNumberResult.data;
@@ -44,8 +54,8 @@ export async function GET(request: NextRequest) {
       `[/api/get-verification-code] Invalid chatId format: ${chatIdParam}. Must be a number.`
     );
     return NextResponse.json(
-      { success: false, message: "Invalid chatId format." },
-      { status: 400 }
+      { success: false, error: "Invalid chatId format." },
+      { status: 400, headers }
     );
   }
 
@@ -59,9 +69,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "No verification code found for this phone number.",
+          error: "No verification code found for this phone number.",
         },
-        { status: 404 }
+        { status: 404, headers }
       );
     }
 
@@ -72,9 +82,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "Verification code has expired.",
+          error: "Verification code has expired.",
         },
-        { status: 410 }
+        { status: 410, headers }
       );
     }
 
@@ -85,9 +95,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "No verification attempts remaining.",
+          error: "No verification attempts remaining.",
         },
-        { status: 403 }
+        { status: 403, headers }
       );
     }
 
@@ -109,10 +119,10 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            message:
+            error:
               "This verification code is associated with a different Telegram user. Please start the process again.",
           },
-          { status: 403 }
+          { status: 403, headers }
         );
       }
     }
@@ -121,10 +131,13 @@ export async function GET(request: NextRequest) {
       `[/api/get-verification-code] Successfully retrieved code for ${validatedPhoneNumber} (associated with chatId ${storedData.telegramChatId})`
     );
 
-    return NextResponse.json({
-      success: true,
-      verificationCode: storedData.code,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        verificationCode: storedData.code,
+      },
+      { headers }
+    );
   } catch (error: any) {
     console.error(
       `[/api/get-verification-code] Error retrieving code for ${validatedPhoneNumber}:`,
@@ -133,9 +146,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: "Error retrieving verification code.",
+        error: "Error retrieving verification code.",
       },
-      { status: 500 }
+      { status: 500, headers }
     );
   }
+}
+
+// Handle OPTIONS request for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
 }

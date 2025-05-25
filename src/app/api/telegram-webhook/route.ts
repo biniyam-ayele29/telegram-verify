@@ -116,48 +116,75 @@ if (token) {
       return;
     }
 
-    // Call the application's API to get the verification code, now passing chatId
-    const apiUrl = `${appUrl}/api/get-verification-code?phoneNumber=${encodeURIComponent(
+    // Call get-verification-code API
+    const apiUrl = `${
+      process.env.NEXT_PUBLIC_APP_URL
+    }/api/get-verification-code?phoneNumber=${encodeURIComponent(
       validatedPhoneNumber
     )}&chatId=${chatId}`;
-    console.log(`[Webhook] Calling API: ${apiUrl}`);
 
-    try {
-      const response = await axios.get(apiUrl);
-      console.log(
-        `[Webhook] API response for ${validatedPhoneNumber} (chatId ${chatId}):`,
-        response.data
-      );
-      if (
-        response.data &&
-        response.data.success &&
-        response.data.verificationCode
-      ) {
-        bot.sendMessage(
-          chatId,
-          `Your verification code is: ${response.data.verificationCode}`
-        );
+    console.log(
+      `[Webhook] Calling get-verification-code API for ${validatedPhoneNumber} (chatId ${chatId})`
+    );
+
+    const maxRetries = 3;
+    let retryCount = 0;
+    let lastError = null;
+
+    while (retryCount < maxRetries) {
+      try {
+        const response = await axios.get(apiUrl, {
+          timeout: 10000, // 10 second timeout
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+        });
+
         console.log(
-          `[Webhook] Sent verification code ${response.data.verificationCode} to chat ID ${chatId} for phone ${validatedPhoneNumber}.`
+          `[Webhook] API response for ${validatedPhoneNumber} (chatId ${chatId}):`,
+          response.data
         );
-      } else {
-        const replyMessage =
-          response.data?.message ||
-          "Could not retrieve your code. Please ensure you've requested one from our website and entered the correct phone number here after typing /receive.";
-        bot.sendMessage(chatId, replyMessage);
-        console.warn(
-          `[Webhook] Failed to get code for ${validatedPhoneNumber} (chatId ${chatId}): ${replyMessage}`
+
+        if (response.data.success) {
+          await bot.sendMessage(
+            chatId,
+            `✅ Your verification code is: ${response.data.verificationCode}\n\nPlease use this code to verify your phone number.`
+          );
+        } else {
+          await bot.sendMessage(
+            chatId,
+            `❌ ${
+              response.data.error ||
+              "Failed to send verification code. Please try again."
+            }`
+          );
+        }
+        break; // Success, exit retry loop
+      } catch (error: any) {
+        lastError = error;
+        retryCount++;
+
+        if (retryCount < maxRetries) {
+          console.log(
+            `[Webhook] Retry ${retryCount}/${maxRetries} for ${validatedPhoneNumber} (chatId ${chatId})`
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * retryCount)
+          ); // Exponential backoff
+          continue;
+        }
+
+        console.error(
+          `[Webhook] Error calling get-verification-code API for ${validatedPhoneNumber} (chatId ${chatId}):`,
+          error
+        );
+
+        await bot.sendMessage(
+          chatId,
+          "❌ Sorry, there was an error processing your request. Please try again in a few moments."
         );
       }
-    } catch (error: any) {
-      console.error(
-        `[Webhook] Error calling get-verification-code API for ${validatedPhoneNumber} (chatId ${chatId}):`,
-        error.response?.data || error.message || error
-      );
-      bot.sendMessage(
-        chatId,
-        "Sorry, there was an error trying to get your verification code. Please make sure you've requested a code from our website, then type /receive and your phone number again."
-      );
     }
   });
 
