@@ -82,9 +82,14 @@ export function PhoneVerificationForm() {
       if (sendCodeFormState.toastMessage) {
         toast({ title: "Notice", description: sendCodeFormState.toastMessage, variant: "default" });
       }
-      router.push(urlToRedirect); // Use captured URL
+      // Defer navigation to the next tick
+      const timerId = setTimeout(() => {
+        console.log(`[PhoneVerificationForm SUCCESS_EFFECT] setTimeout: Attempting redirect to ${urlToRedirect}`);
+        router.push(urlToRedirect);
+      }, 0);
+      return () => clearTimeout(timerId); // Cleanup timer if component unmounts
     }
-  }, [sendCodeFormState, toast, router]);
+  }, [sendCodeFormState, toast, router]); // router and toast are stable
 
   // Effect for error handling
   useEffect(() => {
@@ -142,13 +147,12 @@ export function PhoneVerificationForm() {
             render={({ field }) => (
               <FormItem className="w-2/5">
                 <FormLabel htmlFor="countryCode">Country</FormLabel>
-                <div className="relative">
+                 <div className="relative">
                   <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none z-10" />
-                  {/* Select component itself for display and interaction */}
                   <Select
                     onValueChange={field.onChange}
                     value={field.value} // Controlled component
-                    name={`${field.name}-display`} // Different name to avoid conflict if FormData picks it up directly
+                    name={`${field.name}-display`} // Ensure this doesn't get picked up by FormData if it's not the primary source
                   >
                     <FormControl>
                       {/* FormControl wraps the SelectTrigger for proper id and aria linking */}
@@ -165,7 +169,7 @@ export function PhoneVerificationForm() {
                     </SelectContent>
                   </Select>
                   {/* This hidden input ensures the value is submitted with FormData for server actions */}
-                  <input type="hidden" name={field.name} value={field.value} />
+                  <input type="hidden" {...field} name={field.name} value={field.value} />
                 </div>
                 <FormMessage />
               </FormItem>
@@ -202,4 +206,3 @@ export function PhoneVerificationForm() {
     </Form>
   );
 }
-
