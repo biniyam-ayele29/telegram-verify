@@ -74,22 +74,32 @@ export function PhoneVerificationForm() {
 
   // Effect for successful action and redirection
   useEffect(() => {
-    console.log("[PhoneVerificationForm SUCCESS_EFFECT] Checking state:", JSON.stringify(sendCodeFormState));
-    if (sendCodeFormState?.success && sendCodeFormState?.redirectUrl) {
-      console.log(`[PhoneVerificationForm SUCCESS_EFFECT] Success! Redirecting to: ${sendCodeFormState.redirectUrl}. Toast: ${sendCodeFormState.toastMessage}`);
-      const urlToRedirect = sendCodeFormState.redirectUrl; // Capture before toast
-      
-      if (sendCodeFormState.toastMessage) {
-        toast({ title: "Notice", description: sendCodeFormState.toastMessage, variant: "default" });
+    // Log the entire state object whenever the effect runs due to its change
+    console.log("[PhoneVerificationForm SUCCESS_EFFECT] sendCodeFormState updated:", JSON.stringify(sendCodeFormState));
+  
+    if (sendCodeFormState && sendCodeFormState.success && sendCodeFormState.redirectUrl) {
+      const urlToRedirect = sendCodeFormState.redirectUrl; // Capture the URL
+      const toastMsg = sendCodeFormState.toastMessage;
+  
+      console.log(`[PhoneVerificationForm SUCCESS_EFFECT] Conditions met. Toast: "${toastMsg}". Attempting to redirect to: "${urlToRedirect}"`);
+  
+      if (toastMsg) {
+        toast({ title: "Notice", description: toastMsg, variant: "default" });
       }
-      // Defer navigation to the next tick
+  
+      // Use setTimeout to push navigation to the next tick of the event loop
       const timerId = setTimeout(() => {
-        console.log(`[PhoneVerificationForm SUCCESS_EFFECT] setTimeout: Attempting redirect to ${urlToRedirect}`);
+        console.log(`[PhoneVerificationForm SUCCESS_EFFECT] setTimeout: Executing router.push to "${urlToRedirect}"`);
         router.push(urlToRedirect);
-      }, 0);
-      return () => clearTimeout(timerId); // Cleanup timer if component unmounts
+      }, 0); // 0ms delay
+  
+      // Cleanup function for the timeout
+      return () => {
+        console.log("[PhoneVerificationForm SUCCESS_EFFECT] Cleanup: Clearing timeout for redirection.");
+        clearTimeout(timerId);
+      };
     }
-  }, [sendCodeFormState, toast, router]); // router and toast are stable
+  }, [sendCodeFormState, router, toast]); // Dependencies: sendCodeFormState, router, toast
 
   // Effect for error handling
   useEffect(() => {
@@ -98,7 +108,6 @@ export function PhoneVerificationForm() {
         // Prevent running for the truly initial state if its message is an empty string
         // and no other error indicators (like field or toastMessage) are present.
         if (sendCodeFormState.message === "" && !sendCodeFormState.field && !sendCodeFormState.toastMessage) {
-            // This is likely the initial state, do nothing for errors.
             console.log("[PhoneVerificationForm ERROR_EFFECT] Initial state, no error processing.");
             return;
         }
@@ -146,17 +155,16 @@ export function PhoneVerificationForm() {
             name="countryCode"
             render={({ field }) => (
               <FormItem className="w-2/5">
-                <FormLabel htmlFor="countryCode">Country</FormLabel>
+                <FormLabel htmlFor="countryCode-select">Country</FormLabel>
                  <div className="relative">
                   <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none z-10" />
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value} // Controlled component
-                    name={`${field.name}-display`} // Ensure this doesn't get picked up by FormData if it's not the primary source
+                    value={field.value} 
+                    name={`${field.name}-display`} 
                   >
                     <FormControl>
-                      {/* FormControl wraps the SelectTrigger for proper id and aria linking */}
-                      <SelectTrigger id="countryCode" className="pl-10" ref={field.ref}>
+                      <SelectTrigger id="countryCode-select" className="pl-10" ref={field.ref}>
                         <SelectValue placeholder="Select country" />
                       </SelectTrigger>
                     </FormControl>
@@ -168,8 +176,7 @@ export function PhoneVerificationForm() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {/* This hidden input ensures the value is submitted with FormData for server actions */}
-                  <input type="hidden" {...field} name={field.name} value={field.value} />
+                  <input type="hidden" name={field.name} value={field.value} />
                 </div>
                 <FormMessage />
               </FormItem>
@@ -206,3 +213,4 @@ export function PhoneVerificationForm() {
     </Form>
   );
 }
+
