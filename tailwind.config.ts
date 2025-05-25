@@ -24,6 +24,9 @@ export default {
   				DEFAULT: 'hsl(var(--primary))',
   				foreground: 'hsl(var(--primary-foreground))'
   			},
+        // Add these so Tailwind can generate bg-primary-hover and bg-primary-active
+        'primary-hover': 'hsl(var(--primary-hover))',
+        'primary-active': 'hsl(var(--primary-active))',
   			secondary: {
   				DEFAULT: 'hsl(var(--secondary))',
   				foreground: 'hsl(var(--secondary-foreground))'
