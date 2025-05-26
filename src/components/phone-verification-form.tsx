@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect }  from "react";
-import { useActionState } from "react"; // Correct hook for React 19+
+import { useActionState } from "react"; 
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -59,8 +59,11 @@ const phoneSchema = z.object({
     .regex(/^\d+$/, "Phone number must contain only digits."),
 });
 
+interface PhoneVerificationFormProps {
+  clientId: string; // Added clientId prop
+}
 
-export function PhoneVerificationForm() {
+export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) {
   const router = useRouter();
   const { toast } = useToast();
 
@@ -74,11 +77,14 @@ export function PhoneVerificationForm() {
 
   // Effect for successful action and redirection
   useEffect(() => {
-    // Log the entire state object whenever the effect runs due to its change
     console.log("[PhoneVerificationForm SUCCESS_EFFECT] sendCodeFormState updated:", JSON.stringify(sendCodeFormState));
   
     if (sendCodeFormState && sendCodeFormState.success && sendCodeFormState.redirectUrl) {
-      const urlToRedirect = sendCodeFormState.redirectUrl; // Capture the URL
+      let urlToRedirect = sendCodeFormState.redirectUrl;
+      // Append clientId to the redirectUrl for the /verify-telegram page
+      if (clientId && urlToRedirect.startsWith('/verify-telegram')) {
+        urlToRedirect += `&clientId=${encodeURIComponent(clientId)}`;
+      }
       const toastMsg = sendCodeFormState.toastMessage;
   
       console.log(`[PhoneVerificationForm SUCCESS_EFFECT] Conditions met. Toast: "${toastMsg}". Attempting to redirect to: "${urlToRedirect}"`);
@@ -87,26 +93,22 @@ export function PhoneVerificationForm() {
         toast({ title: "Notice", description: toastMsg, variant: "default" });
       }
   
-      // Use setTimeout to push navigation to the next tick of the event loop
       const timerId = setTimeout(() => {
         console.log(`[PhoneVerificationForm SUCCESS_EFFECT] setTimeout: Executing router.push to "${urlToRedirect}"`);
         router.push(urlToRedirect);
-      }, 0); // 0ms delay
+      }, 0);
   
-      // Cleanup function for the timeout
       return () => {
         console.log("[PhoneVerificationForm SUCCESS_EFFECT] Cleanup: Clearing timeout for redirection.");
         clearTimeout(timerId);
       };
     }
-  }, [sendCodeFormState, router, toast]); // Dependencies: sendCodeFormState, router, toast
+  }, [sendCodeFormState, router, toast, clientId]); // Added clientId to dependency array
 
   // Effect for error handling
   useEffect(() => {
     console.log("[PhoneVerificationForm ERROR_EFFECT] Checking state:", JSON.stringify(sendCodeFormState));
     if (sendCodeFormState && !sendCodeFormState.success && sendCodeFormState.message) {
-        // Prevent running for the truly initial state if its message is an empty string
-        // and no other error indicators (like field or toastMessage) are present.
         if (sendCodeFormState.message === "" && !sendCodeFormState.field && !sendCodeFormState.toastMessage) {
             console.log("[PhoneVerificationForm ERROR_EFFECT] Initial state, no error processing.");
             return;
@@ -125,11 +127,9 @@ export function PhoneVerificationForm() {
           if (fieldName === "countryCode" || fieldName === "localPhoneNumber") {
             phoneForm.setError(fieldName, { type: "manual", message: sendCodeFormState.message });
           } else {
-            // For "root.serverError" or any other unexpected field string
             phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
           }
         } else {
-            // If there's an error message but no specific field, show it as a root error
             phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
         }
     }
@@ -161,7 +161,6 @@ export function PhoneVerificationForm() {
                   <Select
                     onValueChange={field.onChange}
                     value={field.value} 
-                    name={`${field.name}-display`} 
                   >
                     <FormControl>
                       <SelectTrigger id="countryCode-select" className="pl-10" ref={field.ref}>
@@ -176,6 +175,7 @@ export function PhoneVerificationForm() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* Hidden input to ensure value is submitted with FormData */}
                   <input type="hidden" name={field.name} value={field.value} />
                 </div>
                 <FormMessage />
@@ -213,4 +213,3 @@ export function PhoneVerificationForm() {
     </Form>
   );
 }
-

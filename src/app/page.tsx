@@ -13,22 +13,27 @@ interface HomePageProps {
 // FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
 // if you want a default client when no client_id is in the URL.
 // Set to undefined or remove if you always want the client_id from the URL.
-const MANUAL_FALLBACK_CLIENT_ID: string | undefined = "YOUR_MANUAL_TEST_CLIENT_ID_HERE"; 
+const MANUAL_FALLBACK_CLIENT_ID: string | undefined = "bf4c51f7-064c-430e-b4e2-c39a27985b49"; 
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  let clientId = typeof searchParams.client_id === 'string' ? searchParams.client_id : MANUAL_FALLBACK_CLIENT_ID;
+  let clientIdFromUrl = typeof searchParams.client_id === 'string' ? searchParams.client_id : undefined;
+  let clientIdToUse = clientIdFromUrl || MANUAL_FALLBACK_CLIENT_ID;
   
   let clientApp = null;
   let errorType: 'missing_client_id' | 'invalid_client_id' | 'inactive_client_id' | null = null;
+  let errorMessage = "An unknown error occurred.";
 
-  if (!clientId) {
+  if (!clientIdToUse) {
     errorType = 'missing_client_id';
+    errorMessage = "The client_id parameter is missing from the URL and no manual fallback is set or valid. Please ensure you are accessing this page through a valid client application link or configure a manual fallback client_id in the code.";
   } else {
-    clientApp = await getClientApplicationByClientId(clientId);
+    clientApp = await getClientApplicationByClientId(clientIdToUse);
     if (!clientApp) {
       errorType = 'invalid_client_id';
+      errorMessage = `The provided client_id '${clientIdToUse}' is not recognized or invalid. Please check the link or contact the application provider.`;
     } else if (clientApp.status !== 'active') {
       errorType = 'inactive_client_id';
+      errorMessage = `The client application '${clientApp?.companyName || clientIdToUse}' is currently inactive. Please contact the application provider.`;
       // Optionally clear clientApp if you don't want to pass inactive app details further
       // clientApp = null; 
     }
@@ -36,21 +41,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const renderError = () => {
     let title = "Authentication Error";
-    let description = "An unknown error occurred.";
-
     switch (errorType) {
-      case 'missing_client_id':
-        title = "Client ID Missing";
-        description = "The client_id parameter is missing from the URL and no manual fallback is set or valid. Please ensure you are accessing this page through a valid client application link or configure a manual fallback client_id in the code.";
-        break;
-      case 'invalid_client_id':
-        title = "Invalid Client ID";
-        description = `The provided client_id '${clientId}' is not recognized or invalid. Please check the link or contact the application provider.`;
-        break;
-      case 'inactive_client_id':
-        title = "Client Application Inactive";
-        description = `The client application '${clientApp?.companyName || clientId || 'Unknown'}' is currently inactive. Please contact the application provider.`;
-        break;
+      case 'missing_client_id': title = "Client ID Missing"; break;
+      case 'invalid_client_id': title = "Invalid Client ID"; break;
+      case 'inactive_client_id': title = "Client Application Inactive"; break;
     }
 
     return (
@@ -58,7 +52,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <ShieldAlert className="h-5 w-5" />
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
-          {description}
+          {errorMessage}
         </AlertDescription>
       </Alert>
     );
@@ -89,11 +83,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <PhoneVerificationForm />
-              {/* 
-                If you need to pass clientId to the form later:
-                <PhoneVerificationForm clientId={clientId} /> 
-              */}
+              {/* Pass clientIdToUse to the form */}
+              <PhoneVerificationForm clientId={clientIdToUse!} />
             </CardContent>
           </Card>
         )}

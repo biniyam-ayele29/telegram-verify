@@ -1,30 +1,29 @@
+
 // src/lib/actions.ts
 "use server";
 
 import { generateVerificationCode } from "@/ai/flows/generate-verification-code";
 import type { GenerateVerificationCodeOutput } from "@/ai/flows/generate-verification-code";
 import {
-  verificationStore,
-  CODE_EXPIRATION_MS,
-  MAX_VERIFICATION_ATTEMPTS,
-  PartialPhoneSchema,
   FullPhoneNumberSchema,
-  VerificationCodeSchema,
-} from "./verification-shared"; // Import from the new shared file
+} from "./verification-shared";
 import {
   storeVerificationCode,
   getVerificationCode,
   updateVerificationCode,
   deleteVerificationCode,
-} from "./firestore-operations";
+} from "./firestore-operations"; // Corrected import names
+import { CODE_EXPIRATION_MS, MAX_VERIFICATION_ATTEMPTS } from "./verification-shared";
+import { getClientApplicationByClientId } from "./client-actions"; // Import client action
 
 // ActionFormState remains here as it's specific to the actions
 export interface ActionFormState {
   success: boolean;
   message: string;
   field?: string;
-  redirectUrl?: string;
-  toastMessage?: string; // For messages to show in a toast, separate from form field messages
+  redirectUrl?: string; // For navigation between steps in TeleVerify
+  toastMessage?: string;
+  finalRedirectUrl?: string; // For redirecting back to the client app
 }
 
 export async function sendCodeAction(
@@ -33,8 +32,8 @@ export async function sendCodeAction(
 ): Promise<ActionFormState> {
   console.log("[sendCodeAction] Starting code generation process...");
 
-  const countryCode = formData.get("countryCode") as string;
-  const localPhoneNumber = formData.get("localPhoneNumber") as string;
+  const countryCode = (formData.get("countryCode") as string) ?? "";
+  const localPhoneNumber = (formData.get("localPhoneNumber") as string) ?? "";
 
   if (!countryCode || !localPhoneNumber) {
     console.error("[sendCodeAction] Missing phone number components");
@@ -76,19 +75,19 @@ export async function sendCodeAction(
         code: aiResponse.verificationCode,
         expiresAt: Date.now() + CODE_EXPIRATION_MS,
         attemptsRemaining: MAX_VERIFICATION_ATTEMPTS,
-        telegramChatId: -1, // Initialize as -1 to indicate it hasn't been set yet
+        telegramChatId: -1,
       };
 
-      await storeVerificationCode(fullPhoneNumber, storedCodeData);
+      await storeVerificationCode(fullPhoneNumber, storedCodeData); // Corrected function call
       console.log(
-        `[sendCodeAction] Stored verification data for ${fullPhoneNumber}. Code: ${aiResponse.verificationCode}`
+        `[sendCodeAction] Stored verification data for ${fullPhoneNumber} in Firestore. Code: ${aiResponse.verificationCode}`
       );
 
       return {
         success: true,
-        message: "Verification code generated. Redirecting user.", // Internal message
+        message: "Verification code generated. Redirecting user.",
         toastMessage:
-          "Code ready! Go to our Telegram bot, type /receive, then your phone number.", // Message for the user
+          "Code ready! Go to our Telegram bot, type /receive, then send your phone number.",
         redirectUrl: `/verify-telegram?phone=${encodeURIComponent(
           fullPhoneNumber
         )}`,
@@ -100,7 +99,7 @@ export async function sendCodeAction(
       return {
         success: false,
         message: aiResponse.message || "Failed to generate verification code.",
-        field: "localPhoneNumber", // Or a more general error field
+        field: "localPhoneNumber",
         toastMessage:
           aiResponse.message ||
           "Could not prepare verification. Please try again.",
@@ -115,7 +114,7 @@ export async function sendCodeAction(
       success: false,
       message: `Error in code generation: ${error.message || "Unknown error"}`,
       field: "localPhoneNumber",
-      toastMessage: "An error occurred. Please try again.",
+      toastMessage: "An unexpected error occurred while preparing verification.",
     };
   }
 }
@@ -124,8 +123,9 @@ export async function verifyCodeAction(
   prevState: ActionFormState,
   formData: FormData
 ): Promise<ActionFormState> {
-  const verificationCode = formData.get("verificationCode") as string;
-  const fullPhoneNumber = formData.get("fullPhoneNumber") as string;
+  const verificationCode = (formData.get("verificationCode") as string) ?? "";
+  const fullPhoneNumber = (formData.get("fullPhoneNumber") as string) ?? "";
+  const clientId = (formData.get("clientId") as string) ?? ""; // Get clientId from form
 
   if (!verificationCode || !fullPhoneNumber) {
     return {
@@ -135,21 +135,30 @@ export async function verifyCodeAction(
       toastMessage: "Please provide both verification code and phone number.",
     };
   }
+   if (!clientId) {
+    // This case should ideally not happen if form is set up correctly
+    return {
+      success: false,
+      message: "Client ID is missing. Cannot proceed with final redirection.",
+      toastMessage: "An error occurred (missing client identifier).",
+    };
+  }
+
 
   try {
-    const storedData = await getVerificationCode(fullPhoneNumber);
+    const storedData = await getVerificationCode(fullPhoneNumber); // Corrected function call
 
     if (!storedData) {
       return {
         success: false,
-        message: "No verification code found for this phone number.",
+        message: "No verification code found for this phone number. It might have expired or not been requested.",
         field: "verificationCode",
         toastMessage: "Please request a new verification code.",
       };
     }
 
     if (storedData.attemptsRemaining <= 0) {
-      await deleteVerificationCode(fullPhoneNumber);
+      await deleteVerificationCode(fullPhoneNumber); // Corrected function call
       return {
         success: false,
         message: "Too many failed attempts. Please request a new code.",
@@ -159,7 +168,7 @@ export async function verifyCodeAction(
     }
 
     if (Date.now() > storedData.expiresAt) {
-      await deleteVerificationCode(fullPhoneNumber);
+      await deleteVerificationCode(fullPhoneNumber); // Corrected function call
       return {
         success: false,
         message: "Verification code has expired.",
@@ -169,7 +178,7 @@ export async function verifyCodeAction(
     }
 
     if (verificationCode !== storedData.code) {
-      await updateVerificationCode(fullPhoneNumber, {
+      await updateVerificationCode(fullPhoneNumber, { // Corrected function call
         attemptsRemaining: storedData.attemptsRemaining - 1,
       });
 
@@ -184,11 +193,26 @@ export async function verifyCodeAction(
     }
 
     // Code is valid
-    await deleteVerificationCode(fullPhoneNumber);
+    await deleteVerificationCode(fullPhoneNumber); // Corrected function call, clean up used code
+
+    // Fetch client application to get redirect URI
+    const clientApp = await getClientApplicationByClientId(clientId);
+    let finalRedirectUrl: string | undefined = undefined;
+
+    if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
+      finalRedirectUrl = clientApp.redirectUris[0]; // Use the first registered URI
+      console.log(`[verifyCodeAction] Successfully verified. Client: ${clientApp.companyName}. Redirecting to: ${finalRedirectUrl}`);
+    } else {
+      console.warn(`[verifyCodeAction] Client app not found, inactive, or no redirect URIs for clientId: ${clientId}. Cannot perform final redirect.`);
+      // User is verified with TeleVerify, but we can't redirect them back to client.
+      // They will just see the success message on TeleVerify page.
+    }
+
     return {
       success: true,
-      message: "Phone number verified successfully!",
-      toastMessage: "Your phone number has been verified successfully!",
+      message: "Phone number verified successfully! You will be redirected shortly.",
+      toastMessage: "Phone number verified successfully! Redirecting...",
+      finalRedirectUrl: finalRedirectUrl,
     };
   } catch (error: any) {
     console.error(

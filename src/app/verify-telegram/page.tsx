@@ -1,7 +1,8 @@
+
 // src/app/verify-telegram/page.tsx
 "use client";
 
-import React, { useEffect, Suspense } from "react";
+import React, { useEffect, Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { useActionState } from "react";
@@ -19,6 +20,7 @@ import {
   ShieldAlert,
   MessageSquareText, 
   Copy,
+  LogOut,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -57,7 +59,9 @@ function VerifyTelegramContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  
   const fullPhoneNumber = searchParams.get("phone");
+  const clientId = searchParams.get("clientId"); // Get clientId from URL
 
   const initialFormState: ActionFormState = { success: false, message: "" };
   const [verifyCodeFormState, verifyCodeFormAction] = useActionState<
@@ -70,28 +74,47 @@ function VerifyTelegramContent() {
     defaultValues: { verificationCode: "" },
   });
 
-  const [isVerified, setIsVerified] = React.useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [countdown, setCountdown] = useState(3);
+
 
   useEffect(() => {
-    if (!fullPhoneNumber) {
+    if (!fullPhoneNumber || !clientId) { // Check for clientId too
       toast({
         title: "Error",
-        description: "Phone number missing. Please start over.",
+        description: "Phone number or client identifier missing. Please start over.",
         variant: "destructive",
       });
       router.push("/"); 
     }
-  }, [fullPhoneNumber, router, toast]);
+  }, [fullPhoneNumber, clientId, router, toast]);
 
   useEffect(() => {
     if (verifyCodeFormState?.message) {
       if (verifyCodeFormState.success) {
+        setIsVerified(true); // Set verification success
         toast({
           title: "Verified!",
-          description: verifyCodeFormState.message,
+          description: verifyCodeFormState.message, // This message might now include "Redirecting..."
           variant: "default",
         });
-        setIsVerified(true);
+
+        // Handle redirection if finalRedirectUrl is provided
+        if (verifyCodeFormState.finalRedirectUrl) {
+          setIsRedirecting(true);
+          let currentCountdown = 3;
+          const intervalId = setInterval(() => {
+            currentCountdown -= 1;
+            setCountdown(currentCountdown);
+            if (currentCountdown <= 0) {
+              clearInterval(intervalId);
+              router.push(verifyCodeFormState.finalRedirectUrl!);
+            }
+          }, 1000);
+          return () => clearInterval(intervalId); // Cleanup interval on unmount
+        }
+
       } else {
         toast({
           title: "Error",
@@ -111,7 +134,7 @@ function VerifyTelegramContent() {
         }
       }
     }
-  }, [verifyCodeFormState, toast, codeForm]);
+  }, [verifyCodeFormState, toast, codeForm, router]);
 
   const copyToClipboard = (text: string) => {
     if (!text) return;
@@ -131,7 +154,7 @@ function VerifyTelegramContent() {
   }) => {
     const { pending } = useFormStatus();
     return (
-      <Button type="submit" className="w-full" disabled={pending || isVerified}>
+      <Button type="submit" className="w-full" disabled={pending || isVerified || isRedirecting}>
         {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : icon}
         {children}
       </Button>
@@ -140,30 +163,38 @@ function VerifyTelegramContent() {
 
   if (isVerified) {
     return (
-      <Alert variant="default" className="mt-4">
-        <CheckCircle2 className="h-5 w-5 text-green-500" />
-        <AlertTitle>Verification Successful!</AlertTitle>
+      <Alert variant="default" className="mt-4 text-center">
+        <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto mb-2" />
+        <AlertTitle className="font-bold text-lg">Verification Successful!</AlertTitle>
         <AlertDescription>
           Your phone number ({fullPhoneNumber}) has been successfully verified.
+          {isRedirecting && verifyCodeFormState.finalRedirectUrl && (
+            <p className="mt-2">
+              Redirecting you back in {countdown}...
+            </p>
+          )}
+           {!isRedirecting && ( // Only show "Verify Another" if not redirecting elsewhere
+            <Button
+              onClick={() => router.push("/")}
+              variant="link"
+              className="mt-4 p-0 h-auto"
+            >
+              Verify Another Number
+            </Button>
+          )}
         </AlertDescription>
-        <Button
-          onClick={() => router.push("/")}
-          variant="link"
-          className="mt-4 p-0 h-auto"
-        >
-          Verify Another Number
-        </Button>
       </Alert>
     );
   }
 
-  if (!fullPhoneNumber) {
+  if (!fullPhoneNumber || !clientId) {
+    // Initial check for missing params
     return (
       <Alert variant="destructive" className="mt-4">
         <ShieldAlert className="h-5 w-5" />
         <AlertTitle>Missing Information</AlertTitle>
         <AlertDescription>
-          The phone number for verification is missing. Please{" "}
+          The phone number or client information for verification is missing. Please{" "}
           <a href="/" className="underline">
             start over
           </a>
@@ -230,15 +261,15 @@ function VerifyTelegramContent() {
               data-ai-hint="qr code"
             />
           </div>
-          <p className="flex items-start">
+           <p className="flex items-start">
             <span className="font-semibold mr-2">2.</span> In the bot, type and send the command:
             <code className="ml-2 p-1 bg-muted rounded text-foreground inline-block font-mono">/receive</code>
           </p>
           <p className="flex items-start">
-            <span className="font-semibold mr-2">3.</span> The bot will then expect your phone number. Send your full phone number as a new message: <strong className="ml-1">{fullPhoneNumber}</strong>.
+            <span className="font-semibold mr-2">3.</span> The bot will then expect your phone number. As a new message, send your full phone number: <strong className="ml-1">{fullPhoneNumber}</strong> (the one you entered on our site).
           </p>
           <p className="flex items-start">
-            <span className="font-semibold mr-2">4.</span> If the phone number matches the one you entered here, the bot will send you the 6-digit code.
+            <span className="font-semibold mr-2">4.</span> If the phone number matches the one you entered here and on our site, the bot will send you the 6-digit code.
           </p>
         </div>
 
@@ -253,6 +284,9 @@ function VerifyTelegramContent() {
               action={(formData) => {
                 if (fullPhoneNumber) {
                   formData.append("fullPhoneNumber", fullPhoneNumber);
+                }
+                if (clientId) { // Add clientId to the form data
+                  formData.append("clientId", clientId);
                 }
                 verifyCodeFormAction(formData);
               }}
@@ -276,7 +310,7 @@ function VerifyTelegramContent() {
                           placeholder="Enter 6-digit code"
                           className="pl-10 tracking-widest text-center text-lg"
                           {...field}
-                          disabled={isVerified}
+                          disabled={isVerified || isRedirecting}
                         />
                       </FormControl>
                     </div>
@@ -296,14 +330,25 @@ function VerifyTelegramContent() {
           </Form>
         </div>
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex-col space-y-2">
         <Button
           variant="link"
           onClick={() => router.push("/")}
           className="mx-auto text-sm"
+          disabled={isRedirecting}
         >
           Start Over / Change Number
         </Button>
+        { isVerified && verifyCodeFormState.finalRedirectUrl && (
+           <Button
+            variant="outline"
+            onClick={() => router.push(verifyCodeFormState.finalRedirectUrl!)}
+            className="mx-auto text-sm"
+            disabled={!isRedirecting}
+          >
+            <LogOut className="mr-2 h-4 w-4" /> Go to Client App Now
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );
