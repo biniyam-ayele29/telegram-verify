@@ -1,13 +1,4 @@
-import { db } from "./firebase";
-import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  deleteDoc,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore";
+import { adminDb } from "./firebase-admin";
 import { VerificationAttempt } from "./verification-shared";
 
 const VERIFICATION_CODES_COLLECTION = "verificationCodes";
@@ -41,11 +32,13 @@ export async function storeVerificationCode(
   phoneNumber: string,
   data: Omit<VerificationAttempt, "expiresAt"> & { expiresAt: number }
 ): Promise<void> {
-  const docRef = doc(db, VERIFICATION_CODES_COLLECTION, phoneNumber);
+  const docRef = adminDb
+    .collection(VERIFICATION_CODES_COLLECTION)
+    .doc(phoneNumber);
   await retryOperation(async () => {
-    await setDoc(docRef, {
+    await docRef.set({
       ...data,
-      createdAt: serverTimestamp(),
+      createdAt: new Date(),
     });
   });
 }
@@ -53,15 +46,21 @@ export async function storeVerificationCode(
 export async function getVerificationCode(
   phoneNumber: string
 ): Promise<VerificationAttempt | null> {
-  const docRef = doc(db, VERIFICATION_CODES_COLLECTION, phoneNumber);
+  const docRef = adminDb
+    .collection(VERIFICATION_CODES_COLLECTION)
+    .doc(phoneNumber);
   return await retryOperation(async () => {
-    const docSnap = await getDoc(docRef);
+    const docSnap = await docRef.get();
 
-    if (!docSnap.exists()) {
+    if (!docSnap.exists) {
       return null;
     }
 
     const data = docSnap.data();
+    if (!data) {
+      return null;
+    }
+
     return {
       fullPhoneNumber: data.fullPhoneNumber,
       code: data.code,
@@ -76,13 +75,14 @@ export async function updateVerificationCode(
   phoneNumber: string,
   data: Partial<VerificationAttempt>
 ): Promise<void> {
-  const docRef = doc(db, VERIFICATION_CODES_COLLECTION, phoneNumber);
+  const docRef = adminDb
+    .collection(VERIFICATION_CODES_COLLECTION)
+    .doc(phoneNumber);
   await retryOperation(async () => {
-    await setDoc(
-      docRef,
+    await docRef.set(
       {
         ...data,
-        updatedAt: serverTimestamp(),
+        updatedAt: new Date(),
       },
       { merge: true }
     );
@@ -92,8 +92,10 @@ export async function updateVerificationCode(
 export async function deleteVerificationCode(
   phoneNumber: string
 ): Promise<void> {
-  const docRef = doc(db, VERIFICATION_CODES_COLLECTION, phoneNumber);
+  const docRef = adminDb
+    .collection(VERIFICATION_CODES_COLLECTION)
+    .doc(phoneNumber);
   await retryOperation(async () => {
-    await deleteDoc(docRef);
+    await docRef.delete();
   });
 }

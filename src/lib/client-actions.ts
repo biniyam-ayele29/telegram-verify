@@ -1,10 +1,8 @@
-
 // src/lib/client-actions.ts
-'use server';
+"use server";
 
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { db } from './firebase';
-import type { ClientApplication } from './admin-types'; // Assuming this type is defined
+import { adminDb } from "./firebase-admin";
+import type { ClientApplication } from "./admin-types";
 
 /**
  * Fetches a client application by its clientId.
@@ -18,23 +16,24 @@ export async function getClientApplicationByClientId(
     return null;
   }
 
-  console.log(`[ClientActions] Fetching client application by clientId: ${clientId}`);
+  console.log(
+    `[ClientActions] Fetching client application by clientId: ${clientId}`
+  );
   try {
-    const clientAppsRef = collection(db, 'clientApplications');
-    const q = query(
-      clientAppsRef,
-      where('clientId', '==', clientId),
-      limit(1)
-    );
+    const snapshot = await adminDb
+      .collection("clientApplications")
+      .where("clientId", "==", clientId)
+      .limit(1)
+      .get();
 
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      console.log(`[ClientActions] No client application found with clientId: ${clientId}`);
+    if (snapshot.empty) {
+      console.log(
+        `[ClientActions] No client application found with clientId: ${clientId}`
+      );
       return null;
     }
 
-    const doc = querySnapshot.docs[0];
+    const doc = snapshot.docs[0];
     const data = doc.data();
 
     const application: ClientApplication = {
@@ -45,15 +44,19 @@ export async function getClientApplicationByClientId(
       contactEmail: data.contactEmail,
       redirectUris: data.redirectUris,
       status: data.status,
-      createdAt: data.createdAt?.toDate(), // Convert Firestore Timestamp to Date
-      updatedAt: data.updatedAt?.toDate(), // Convert Firestore Timestamp to Date
+      createdAt: data.createdAt?.toDate(),
+      updatedAt: data.updatedAt?.toDate(),
     };
-    
-    console.log(`[ClientActions] Found client application: ${application.companyName}, Status: ${application.status}`);
-    return application;
 
+    console.log(
+      `[ClientActions] Found client application: ${application.companyName}, Status: ${application.status}`
+    );
+    return application;
   } catch (error) {
-    console.error('[ClientActions] Error fetching client application by clientId:', error);
-    return null; // Or throw the error if you want to handle it differently upstream
+    console.error(
+      "[ClientActions] Error fetching client application by clientId:",
+      error
+    );
+    return null;
   }
 }
