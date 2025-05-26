@@ -7,12 +7,12 @@ export interface ClientApplication {
   companyName: string;
   contactEmail: string;
   redirectUris: string[]; // Array of allowed redirect URIs
-  status: 'active' | 'disabled';
+  status: "active" | "disabled";
   createdAt: Date;
   updatedAt: Date;
 }
 
 // For returning the generated secret once upon creation
 export interface NewClientApplicationResult extends ClientApplication {
-  clientSecretPlainText?: string; 
+  clientSecretPlainText?: string;
 }
