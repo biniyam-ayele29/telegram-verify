@@ -9,23 +9,16 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const appUrl = process.env.NEXT_PUBLIC_APP_URL; // For logging, not used for API calls within this file anymore
 
 console.log("[Webhook Module] Initializing telegram-webhook route module...");
+console.log(`[Webhook Module] TELEGRAM_BOT_TOKEN is ${token ? "SET" : "NOT SET"}`);
+console.log(`[Webhook Module] NEXT_PUBLIC_APP_URL is: ${appUrl}`);
 
-if (!token) {
-  console.error(
-    "[Webhook Module] CRITICAL: TELEGRAM_BOT_TOKEN is not defined in .env. The bot will not work."
-  );
-} else {
-  console.log("[Webhook Module] TELEGRAM_BOT_TOKEN is set.");
-}
-if (!appUrl) {
-  console.warn(
-    "[Webhook Module] WARNING: NEXT_PUBLIC_APP_URL is not defined in .env. This might be okay if not used for self-API calls by bot."
-  );
-} else {
-  console.log(`[Webhook Module] NEXT_PUBLIC_APP_URL is set to: ${appUrl}`);
-}
 
-const bot = token ? new TelegramBot(token) : ({} as TelegramBot);
+// WARNING: usersAwaitingPhoneNumber is an IN-MEMORY store.
+// This will NOT work reliably in a serverless environment or with multiple instances.
+// Replace with a persistent store (e.g., Firestore, Redis) for production.
+// const usersAwaitingPhoneNumber = new Set<number>(); // Chat IDs
+
+const bot = token ? new TelegramBot(token) : ({} as TelegramBot); // Type assertion for conditional init
 if (token) {
   console.log("[Webhook Module] Telegram bot instance potentially initialized.");
 
@@ -35,15 +28,16 @@ if (token) {
     const chatId = msg.chat.id;
     const pendingId = match ? match[1] : null;
 
-    console.log(`[Webhook] Received /start command with payload. Chat ID: ${chatId}, Pending ID from payload: ${pendingId}`);
+    console.log(`[Webhook] Received /start command with KICKOFF_ payload. Chat ID: ${chatId}, Pending ID from payload: ${pendingId}`);
 
     if (!pendingId) {
-      console.warn(`[Webhook] /start command received for chat ${chatId} but no pendingId payload found.`);
-      bot.sendMessage(chatId, "Welcome! If you're trying to verify, please use the link from our website.");
+      console.warn(`[Webhook] /start KICKOFF_ command received for chat ${chatId} but no pendingId payload found in match.`);
+      bot.sendMessage(chatId, "Welcome! It looks like you tried to start verification, but the link was incomplete. Please use the complete link from our website.");
       return;
     }
 
     try {
+      console.log(`[Webhook] Processing verification request for pendingId: ${pendingId.substring(0,8)}... (Chat ID: ${chatId})`);
       bot.sendMessage(chatId, `Processing your verification request (ID: ${pendingId.substring(0,8)})...`);
       const attempt = await getVerificationAttemptById(pendingId);
 
@@ -52,6 +46,8 @@ if (token) {
         bot.sendMessage(chatId, "Sorry, your verification request was not found. It might have expired or is invalid. Please try starting the process again on our website.");
         return;
       }
+      console.log(`[Webhook] Found attempt for pendingId ${pendingId}:`, attempt);
+
 
       if (attempt.status !== 'pending') {
         console.warn(`[Webhook] Verification attempt ${pendingId} (chatId: ${chatId}) has status '${attempt.status}', expected 'pending'.`);
@@ -83,7 +79,7 @@ if (token) {
       bot.sendMessage(chatId, `Your verification code for ${attempt.fullPhoneNumber} is: ${attempt.code}\n\nPlease enter this code on the website to complete verification.`);
 
     } catch (error: any) {
-      console.error(`[Webhook] Error processing /start ${pendingId} for chatId ${chatId}:`, error.message || error);
+      console.error(`[Webhook] Error processing /start KICKOFF_${pendingId} for chatId ${chatId}:`, error.message || error);
       bot.sendMessage(chatId, "Sorry, an error occurred while processing your request. Please try again later or contact support if the issue persists.");
     }
   });
@@ -91,12 +87,13 @@ if (token) {
   // Generic /start handler if no payload or different payload
   bot.onText(/\/start$/, (msg) => {
      const chatId = msg.chat.id;
-     console.log(`[Webhook] Received generic /start command from chat ID: ${chatId}`);
-     bot.sendMessage(chatId, "Welcome to TeleVerify! To verify your phone number, please initiate the process from our partner website. You will then be guided back here.");
+     console.log(`[Webhook] Received generic /start command (no KICKOFF_ payload) from chat ID: ${chatId}`);
+     bot.sendMessage(chatId, "Welcome to TeleVerify! To verify your phone number for a website, please initiate the process from that website. You will then be given a specific link to click which will bring you back here to receive your code.");
   });
 
 
   bot.on("polling_error", (error: any) => {
+    // This should ideally not happen if webhooks are working correctly
     console.error(
       "[Webhook] Telegram Bot Polling Error (should not occur with webhooks):",
       error.code || "unknown",
@@ -183,3 +180,6 @@ export async function GET(request: NextRequest) {
       "Telegram webhook is active and bot token seems to be configured. Use POST for updates from Telegram.",
   });
 }
+
+// Removed old /receive and subsequent message handling logic as the KICKOFF_ flow is now primary.
+// The usersAwaitingPhoneNumber Set is also removed as it's not used by the KICKOFF_ flow.
