@@ -11,6 +11,7 @@ import {
   collection,
   query,
   where,
+  getDocs,
   limit,
   orderBy,
 } from "firebase/firestore";
@@ -36,7 +37,7 @@ export async function storeVerificationAttempt(
 ): Promise<void> {
   const attemptId = attempt.id; // This is the pendingVerificationId
   console.log(
-    `[Firestore] Attempting to store verification attempt with id: ${attemptId} for website phone: ${attempt.websitePhoneNumber}`
+    `[Firestore] Attempting to store verification attempt with id: ${attemptId} for website phone: ${attempt.websitePhoneNumber}. ClientID: ${attempt.clientId}`
   );
   console.log("[Firestore] Data to be stored:", JSON.stringify(attempt));
   try {
@@ -199,5 +200,64 @@ export async function deleteBotSession(chatId: number): Promise<void> {
   } catch (error) {
     console.error(`[Firestore] Error deleting bot session for chatId ${chatId}:`, error);
     // Not throwing error, as this is cleanup. Log it.
+  }
+}
+
+/**
+ * Finds a previously verified attempt for a given phone number and Telegram chat ID.
+ * Looks for the most recent 'verified' attempt.
+ */
+export async function findVerifiedAttemptByPhoneAndChatId(
+  websitePhoneNumber: string,
+  telegramChatId: number
+): Promise<VerificationAttempt | null> {
+  console.log(
+    `[Firestore] Checking for previously verified attempt for phone: ${websitePhoneNumber} and chatId: ${telegramChatId}`
+  );
+  try {
+    const attemptsCollectionRef = collection(db, VERIFICATION_ATTEMPTS_COLLECTION);
+    const q = query(
+      attemptsCollectionRef,
+      where("websitePhoneNumber", "==", websitePhoneNumber),
+      where("telegramChatId", "==", telegramChatId),
+      where("status", "==", "verified"),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
+
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      const docSnap = querySnapshot.docs[0];
+      const data = docSnap.data();
+      const attempt: VerificationAttempt = {
+        id: docSnap.id,
+        clientId: data.clientId,
+        websitePhoneNumber: data.websitePhoneNumber,
+        code: data.code, // Note: this is the code from the *old* verified attempt
+        expiresAt: (data.expiresAt as Timestamp).toMillis(),
+        attemptsRemaining: data.attemptsRemaining,
+        telegramChatId: data.telegramChatId,
+        telegramPhoneNumber: data.telegramPhoneNumber,
+        status: data.status,
+        createdAt: (data.createdAt as Timestamp).toMillis(),
+        updatedAt: (data.updatedAt as Timestamp)?.toMillis(),
+      };
+      console.log(
+        `[Firestore] Found previously verified attempt (ID: ${docSnap.id}) for phone: ${websitePhoneNumber} and chatId: ${telegramChatId}`
+      );
+      return attempt;
+    }
+    console.log(
+      `[Firestore] No previously verified attempt found for phone: ${websitePhoneNumber} and chatId: ${telegramChatId}`
+    );
+    return null;
+  } catch (error) {
+    console.error(
+      `[Firestore] Error finding verified attempt by phone and chatId for ${websitePhoneNumber}:`,
+      error
+    );
+    // In case of error, assume no verified attempt found to proceed with normal flow.
+    // For production, you might want more sophisticated error handling or re-throwing.
+    return null;
   }
 }
