@@ -19,7 +19,7 @@ interface HomePageProps {
 // FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
 // if you want a default client when no client_id is in the URL.
 // Set to undefined or remove if you always want the client_id from the URL.
-const MANUAL_FALLBACK_CLIENT_ID: string | undefined = undefined; // "bf4c51f7-064c-430e-b4e2-c39a27985b49";
+const MANUAL_FALLBACK_CLIENT_ID: string | undefined = "bf4c51f7-064c-430e-b4e2-c39a27985b49";
 
 
 export default async function HomePage({ searchParams }: HomePageProps) {
