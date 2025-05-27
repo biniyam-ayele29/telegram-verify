@@ -9,17 +9,17 @@ import type { GenerateVerificationCodeOutput } from "@/ai/flows/generate-verific
 import {
   PartialPhoneSchema,
   FullPhoneNumberSchema,
-  CODE_EXPIRATION_MS,
-  MAX_VERIFICATION_ATTEMPTS_ON_WEBSITE,
-  type VerificationAttempt,
-} from "./verification-shared";
+  VerificationCodeSchema,
+} from "./verification-shared"; // Import from the new shared file
 import {
   storeVerificationAttempt,
   getVerificationAttemptById,
   updateVerificationAttempt,
   // deleteVerificationAttempt, // We might not delete immediately, just update status
 } from "./firestore-operations";
-import { getClientApplicationByClientId } from "./client-actions";
+import { CODE_EXPIRATION_MS, MAX_VERIFICATION_ATTEMPTS_ON_WEBSITE, type VerificationAttempt } from "./verification-shared";
+import { getClientApplicationByClientId } from "./client-actions"; // Import client action
+
 
 export interface ActionFormState {
   success: boolean;
@@ -39,7 +39,7 @@ export async function sendCodeAction(
 
   const countryCode = (formData.get("countryCode") as string) ?? "";
   const localPhoneNumber = (formData.get("localPhoneNumber") as string) ?? "";
-  const clientId = (formData.get("clientId") as string) ?? ""; // clientId is passed from the form
+  const clientId = (formData.get("clientId") as string) ?? "";
 
   if (!clientId) {
      console.error("[sendCodeAction] Client ID is missing from form data.");
@@ -65,7 +65,7 @@ export async function sendCodeAction(
   }
 
   const fullPhoneNumber = `${validatedPartialPhone.data.countryCode}${validatedPartialPhone.data.localPhoneNumber}`;
-  console.log(`[sendCodeAction] Processing full phone number: ${fullPhoneNumber} for clientId: ${clientId}`);
+  console.log(`[sendCodeAction] Processing website phone number: ${fullPhoneNumber} for clientId: ${clientId}`);
 
   const validationResult = FullPhoneNumberSchema.safeParse(fullPhoneNumber);
   if (!validationResult.success) {
@@ -95,12 +95,12 @@ export async function sendCodeAction(
       const newAttempt: VerificationAttempt = {
         id: pendingVerificationId,
         clientId: clientId,
-        fullPhoneNumber,
+        websitePhoneNumber: fullPhoneNumber,
         code: aiResponse.verificationCode,
         expiresAt: now + CODE_EXPIRATION_MS,
         attemptsRemaining: MAX_VERIFICATION_ATTEMPTS_ON_WEBSITE,
-        telegramChatId: null,
-        status: 'pending',
+        telegramChatId: null, // Not yet linked to a Telegram chat
+        status: 'pending',   // Initial status
         createdAt: now,
         updatedAt: now,
       };
@@ -112,9 +112,9 @@ export async function sendCodeAction(
 
       return {
         success: true,
-        message: "Verification process initiated. Redirecting user.",
-        toastMessage: "Follow instructions to get your code via Telegram.",
-        redirectUrl: `/verify-telegram?pendingId=${pendingVerificationId}`,
+        message: "Verification process initiated. Redirecting user to get code via Telegram.",
+        toastMessage: "Follow instructions on the next page to get your code via Telegram.",
+        redirectUrl: `/verify-telegram?pendingId=${pendingVerificationId}`, // Pass pendingId
         pendingId: pendingVerificationId,
       };
     } else {
@@ -135,7 +135,6 @@ export async function sendCodeAction(
       `[sendCodeAction] Error in code generation process for ${fullPhoneNumber}:`,
       error.message || error
     );
-    // Check for Firestore permission errors specifically
     if (error.message?.includes("PERMISSION_DENIED")) {
         return {
             success: false,
@@ -157,7 +156,7 @@ export async function verifyCodeAction(
   formData: FormData
 ): Promise<ActionFormState> {
   const verificationCode = (formData.get("verificationCode") as string) ?? "";
-  const pendingId = (formData.get("pendingId") as string) ?? "";
+  const pendingId = (formData.get("pendingId") as string) ?? ""; // Expect pendingId from the form
 
   console.log(`[verifyCodeAction] Verifying OTP: ${verificationCode} for pendingId: ${pendingId}`);
 
@@ -178,14 +177,13 @@ export async function verifyCodeAction(
       return {
         success: false,
         message: "Verification session not found. It might have expired or is invalid.",
-        field: "verificationCode", // Or a general error
+        field: "verificationCode",
         toastMessage: "Invalid session. Please start over.",
       };
     }
 
     if (attempt.status === 'verified') {
-      console.warn(`[verifyCodeAction] Attempt ${pendingId} already verified.`);
-      // Potentially redirect if already verified and client app known
+      console.warn(`[verifyCodeAction] Attempt ${pendingId} already verified for ${attempt.websitePhoneNumber}.`);
        const clientApp = await getClientApplicationByClientId(attempt.clientId);
        let finalRedirectUrl: string | undefined = undefined;
        if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
@@ -200,18 +198,24 @@ export async function verifyCodeAction(
     }
     
     if (attempt.status !== 'code_sent') {
-        console.warn(`[verifyCodeAction] Attempt ${pendingId} has status ${attempt.status}, expected 'code_sent'.`);
+        console.warn(`[verifyCodeAction] Attempt ${pendingId} has status '${attempt.status}', expected 'code_sent'. Code might not have been delivered or phone numbers didn't match.`);
+        let userMessage = "Verification process not in correct state. Please ensure you received code via Telegram.";
+        if (attempt.status === 'phone_mismatch') {
+            userMessage = "Phone number match failed. Please start over.";
+        } else if (attempt.status === 'pending') {
+            userMessage = "Verification process not yet completed in Telegram. Please ensure you shared your contact with the bot.";
+        }
         return {
             success: false,
-            message: "Verification process not in correct state. Please ensure you received code via Telegram.",
+            message: userMessage,
             field: "verificationCode",
-            toastMessage: "Verification process issue. Try getting code from Telegram again.",
+            toastMessage: userMessage,
         };
     }
 
 
     if (Date.now() > attempt.expiresAt) {
-      await updateVerificationAttempt(pendingId, { status: 'expired' });
+      await updateVerificationAttempt(pendingId, { status: 'expired', updatedAt: Date.now() });
       console.warn(`[verifyCodeAction] Code expired for pendingId: ${pendingId}`);
       return {
         success: false,
@@ -222,7 +226,7 @@ export async function verifyCodeAction(
     }
 
     if (attempt.attemptsRemaining <= 0) {
-      await updateVerificationAttempt(pendingId, { status: 'failed_too_many_attempts' });
+      await updateVerificationAttempt(pendingId, { status: 'failed_otp', updatedAt: Date.now() });
       console.warn(`[verifyCodeAction] No attempts remaining for pendingId: ${pendingId}`);
       return {
         success: false,
@@ -234,7 +238,7 @@ export async function verifyCodeAction(
 
     if (verificationCode !== attempt.code) {
       const newAttemptsRemaining = attempt.attemptsRemaining - 1;
-      await updateVerificationAttempt(pendingId, { attemptsRemaining: newAttemptsRemaining });
+      await updateVerificationAttempt(pendingId, { attemptsRemaining: newAttemptsRemaining, updatedAt: Date.now() });
       console.warn(`[verifyCodeAction] Invalid code for pendingId: ${pendingId}. Attempts left: ${newAttemptsRemaining}`);
       return {
         success: false,
@@ -246,7 +250,7 @@ export async function verifyCodeAction(
 
     // Code is valid
     await updateVerificationAttempt(pendingId, { status: 'verified', updatedAt: Date.now() });
-    console.log(`[verifyCodeAction] Successfully verified OTP for pendingId: ${pendingId}. Phone: ${attempt.fullPhoneNumber}`);
+    console.log(`[verifyCodeAction] Successfully verified OTP for pendingId: ${pendingId}. Phone: ${attempt.websitePhoneNumber}`);
 
     const clientApp = await getClientApplicationByClientId(attempt.clientId);
     let finalRedirectUrl: string | undefined = undefined;

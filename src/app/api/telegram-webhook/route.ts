@@ -2,98 +2,168 @@
 // src/app/api/telegram-webhook/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import TelegramBot from "node-telegram-bot-api";
-import { getVerificationAttemptById, updateVerificationAttempt } from "@/lib/firestore-operations";
-import { FullPhoneNumberSchema } from "@/lib/verification-shared"; // Keep for any potential direct phone inputs, though not primary flow now
+import { 
+    getVerificationAttemptById, 
+    updateVerificationAttempt,
+    storeBotSession,
+    getBotSessionByChatId,
+    deleteBotSession
+} from "@/lib/firestore-operations";
+import { FullPhoneNumberSchema, type TelegramBotSession } from "@/lib/verification-shared";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
-const appUrl = process.env.NEXT_PUBLIC_APP_URL; // For logging, not used for API calls within this file anymore
+const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
 console.log("[Webhook Module] Initializing telegram-webhook route module...");
 console.log(`[Webhook Module] TELEGRAM_BOT_TOKEN is ${token ? "SET" : "NOT SET"}`);
 console.log(`[Webhook Module] NEXT_PUBLIC_APP_URL is: ${appUrl}`);
 
-
-// WARNING: usersAwaitingPhoneNumber is an IN-MEMORY store.
-// This will NOT work reliably in a serverless environment or with multiple instances.
-// Replace with a persistent store (e.g., Firestore, Redis) for production.
-// const usersAwaitingPhoneNumber = new Set<number>(); // Chat IDs
-
+// Initialize bot - this will only create an instance, actual polling/webhook connection is managed by Telegram.
 const bot = token ? new TelegramBot(token) : ({} as TelegramBot); // Type assertion for conditional init
 if (token) {
   console.log("[Webhook Module] Telegram bot instance potentially initialized.");
 
-  // Handler for /start KICKOFF_PENDING_ID command
-  // Example: /start KICKOFF_123e4567-e89b-12d3-a456-426614174000
-  bot.onText(/\/start KICKOFF_([a-zA-Z0-9-]+)/, async (msg, match) => {
+  // Handler for /start VERIFY_{pendingId} command
+  // Example: /start VERIFY_123e4567-e89b-12d3-a456-426614174000
+  bot.onText(/\/start VERIFY_([a-zA-Z0-9-]+)/, async (msg, match) => {
     const chatId = msg.chat.id;
-    const pendingId = match ? match[1] : null;
+    const pendingIdFromPayload = match ? match[1] : null;
 
-    console.log(`[Webhook] Received /start command with KICKOFF_ payload. Chat ID: ${chatId}, Pending ID from payload: ${pendingId}`);
+    console.log(`[Webhook] Received /start command with VERIFY_ payload. Chat ID: ${chatId}, Pending ID: ${pendingIdFromPayload}`);
 
-    if (!pendingId) {
-      console.warn(`[Webhook] /start KICKOFF_ command received for chat ${chatId} but no pendingId payload found in match.`);
-      bot.sendMessage(chatId, "Welcome! It looks like you tried to start verification, but the link was incomplete. Please use the complete link from our website.");
+    if (!pendingIdFromPayload) {
+      console.warn(`[Webhook] /start VERIFY_ command for chat ${chatId} but no pendingId payload found.`);
+      bot.sendMessage(chatId, "Welcome! It looks like the verification link was incomplete. Please use the complete link from our website.");
       return;
     }
 
     try {
-      console.log(`[Webhook] Processing verification request for pendingId: ${pendingId.substring(0,8)}... (Chat ID: ${chatId})`);
-      bot.sendMessage(chatId, `Processing your verification request (ID: ${pendingId.substring(0,8)})...`);
-      const attempt = await getVerificationAttemptById(pendingId);
+      // Store the association between chat_id and pending_id
+      const botSession: TelegramBotSession = {
+          chatId: chatId,
+          pendingVerificationId: pendingIdFromPayload,
+          createdAt: Date.now()
+      };
+      await storeBotSession(botSession);
+      console.log(`[Webhook] Stored bot session for chatId ${chatId} linked to pendingId ${pendingIdFromPayload.substring(0,8)}...`);
 
-      if (!attempt) {
-        console.warn(`[Webhook] No verification attempt found for pendingId: ${pendingId} (chatId: ${chatId})`);
-        bot.sendMessage(chatId, "Sorry, your verification request was not found. It might have expired or is invalid. Please try starting the process again on our website.");
-        return;
-      }
-      console.log(`[Webhook] Found attempt for pendingId ${pendingId}:`, attempt);
-
-
-      if (attempt.status !== 'pending') {
-        console.warn(`[Webhook] Verification attempt ${pendingId} (chatId: ${chatId}) has status '${attempt.status}', expected 'pending'.`);
-        if (attempt.status === 'code_sent' && attempt.telegramChatId === chatId) {
-             bot.sendMessage(chatId, `A code has already been sent for your number ${attempt.fullPhoneNumber}. It is: ${attempt.code}. Please enter this on the website.`);
-        } else if (attempt.status === 'verified') {
-            bot.sendMessage(chatId, `Your number ${attempt.fullPhoneNumber} is already verified with us.`);
-        } else {
-            bot.sendMessage(chatId, "This verification request cannot be processed (status: " + attempt.status + "). Please try starting over on our website.");
-        }
-        return;
-      }
-
-      if (Date.now() > attempt.expiresAt) {
-        console.warn(`[Webhook] Verification attempt ${pendingId} (chatId: ${chatId}) has expired.`);
-        await updateVerificationAttempt(pendingId, { status: 'expired', updatedAt: Date.now() });
-        bot.sendMessage(chatId, "Sorry, your verification request has expired. Please try starting the process again on our website.");
-        return;
-      }
-
-      // Link chatId to the attempt and send the code
-      await updateVerificationAttempt(pendingId, { 
-        telegramChatId: chatId, 
-        status: 'code_sent',
-        updatedAt: Date.now()
+      // Ask user to share contact
+      const replyMarkup = {
+        keyboard: [[{ text: "Share Contact", request_contact: true }]],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+      };
+      bot.sendMessage(chatId, "Please share your contact information to proceed with verification:", {
+        // @ts-ignore // node-telegram-bot-api types might not be perfectly aligned with Telegram's API for reply_markup
+        reply_markup: replyMarkup,
       });
+      console.log(`[Webhook] Sent 'Share Contact' button to chatId ${chatId} for pendingId ${pendingIdFromPayload.substring(0,8)}...`);
       
-      console.log(`[Webhook] Successfully linked chatId ${chatId} to pendingId ${pendingId}. Sending code ${attempt.code} for phone ${attempt.fullPhoneNumber}.`);
-      bot.sendMessage(chatId, `Your verification code for ${attempt.fullPhoneNumber} is: ${attempt.code}\n\nPlease enter this code on the website to complete verification.`);
+      // Update verification attempt status (optional, but can be useful for tracking)
+      // await updateVerificationAttempt(pendingIdFromPayload, { status: 'contact_requested', updatedAt: Date.now() });
 
     } catch (error: any) {
-      console.error(`[Webhook] Error processing /start KICKOFF_${pendingId} for chatId ${chatId}:`, error.message || error);
-      bot.sendMessage(chatId, "Sorry, an error occurred while processing your request. Please try again later or contact support if the issue persists.");
+      console.error(`[Webhook] Error processing /start VERIFY_${pendingIdFromPayload} for chatId ${chatId}:`, error.message || error);
+      bot.sendMessage(chatId, "Sorry, an error occurred while initiating contact sharing. Please try clicking the link from the website again.");
+    }
+  });
+
+  // Handler for when user shares contact
+  bot.on('contact', async (msg) => {
+    const chatId = msg.chat.id;
+    const telegramPhoneNumber = msg.contact?.phone_number;
+
+    console.log(`[Webhook] Received contact from chatId ${chatId}. Telegram Phone: ${telegramPhoneNumber}`);
+
+    if (!telegramPhoneNumber) {
+      console.warn(`[Webhook] Contact received from chatId ${chatId} but phone number is missing.`);
+      bot.sendMessage(chatId, "Could not get your phone number from the shared contact. Please try again.");
+      return;
+    }
+    
+    // Ensure telegramPhoneNumber starts with '+' if it doesn't (Telegram usually provides it in E.164)
+    const formattedTelegramPhone = telegramPhoneNumber.startsWith('+') ? telegramPhoneNumber : `+${telegramPhoneNumber}`;
+
+    try {
+      const botSession = await getBotSessionByChatId(chatId);
+      if (!botSession) {
+        console.warn(`[Webhook] No active bot session found for chatId ${chatId} upon receiving contact.`);
+        bot.sendMessage(chatId, "Your session for sharing contact was not found. Please restart the process from the website.");
+        return;
+      }
+
+      const { pendingVerificationId } = botSession;
+      console.log(`[Webhook] Retrieved bot session for chatId ${chatId}, associated pendingId: ${pendingVerificationId.substring(0,8)}...`);
+
+      const attempt = await getVerificationAttemptById(pendingVerificationId);
+      if (!attempt) {
+        console.warn(`[Webhook] No verification attempt found for pendingId ${pendingVerificationId} (from chatId ${chatId}).`);
+        bot.sendMessage(chatId, "Your verification request was not found. It might have expired. Please start over on the website.");
+        await deleteBotSession(chatId); // Clean up session
+        return;
+      }
+
+      console.log(`[Webhook] Verification attempt ${pendingVerificationId} details: Website Phone: ${attempt.websitePhoneNumber}, Status: ${attempt.status}`);
+
+      if (attempt.status !== 'pending' && attempt.status !== 'contact_requested') { // Allow if bot was restarted and status was contact_requested
+          let messageForUser = "This verification request cannot be processed (status: " + attempt.status + ").";
+          if (attempt.status === 'code_sent' && attempt.telegramChatId === chatId) {
+               messageForUser = `A code has already been sent for your number ${attempt.websitePhoneNumber}. It is: ${attempt.code}. Please enter this on the website.`;
+          } else if (attempt.status === 'verified') {
+              messageForUser = `Your number ${attempt.websitePhoneNumber} is already verified.`;
+          }
+          bot.sendMessage(chatId, messageForUser);
+          await deleteBotSession(chatId);
+          return;
+      }
+      
+      if (Date.now() > attempt.expiresAt) {
+        console.warn(`[Webhook] Verification attempt ${pendingVerificationId} for chatId ${chatId} has expired.`);
+        await updateVerificationAttempt(pendingVerificationId, { status: 'expired', updatedAt: Date.now() });
+        bot.sendMessage(chatId, "Sorry, your verification request has expired. Please try starting the process again on our website.");
+        await deleteBotSession(chatId);
+        return;
+      }
+
+      // Compare phone numbers (normalize if necessary, e.g. remove leading '+' if one has it and other doesn't, though E.164 is standard)
+      if (formattedTelegramPhone === attempt.websitePhoneNumber) {
+        console.log(`[Webhook] Phone numbers match for pendingId ${pendingVerificationId}! Website: ${attempt.websitePhoneNumber}, Telegram: ${formattedTelegramPhone}.`);
+        await updateVerificationAttempt(pendingVerificationId, { 
+          telegramChatId: chatId, 
+          telegramPhoneNumber: formattedTelegramPhone,
+          status: 'code_sent',
+          updatedAt: Date.now()
+        });
+        bot.sendMessage(chatId, `Your verification code for ${attempt.websitePhoneNumber} is: ${attempt.code}\n\nPlease enter this code on the website.`);
+        console.log(`[Webhook] Sent OTP ${attempt.code} to chatId ${chatId} for ${attempt.websitePhoneNumber}.`);
+      } else {
+        console.warn(`[Webhook] Phone number mismatch for pendingId ${pendingVerificationId}. Website: ${attempt.websitePhoneNumber}, Telegram: ${formattedTelegramPhone}.`);
+        await updateVerificationAttempt(pendingVerificationId, {
+          telegramPhoneNumber: formattedTelegramPhone, // Store the mismatched number for audit
+          status: 'phone_mismatch',
+          updatedAt: Date.now()
+        });
+        bot.sendMessage(chatId, `The phone number you shared (${formattedTelegramPhone}) does not match the number registered on the website (${attempt.websitePhoneNumber}). Please ensure you initiated this process for the correct number or start over on the website.`);
+      }
+      await deleteBotSession(chatId); // Clean up session after processing
+
+    } catch (error: any) {
+      console.error(`[Webhook] Error processing contact for chatId ${chatId}:`, error.message || error);
+      bot.sendMessage(chatId, "Sorry, an error occurred while processing your shared contact. Please try again or contact support.");
+      // Optionally clean up bot session here if it exists
+      try { await deleteBotSession(chatId); } catch (e) { /* ignore cleanup error */ }
     }
   });
 
   // Generic /start handler if no payload or different payload
   bot.onText(/\/start$/, (msg) => {
      const chatId = msg.chat.id;
-     console.log(`[Webhook] Received generic /start command (no KICKOFF_ payload) from chat ID: ${chatId}`);
+     console.log(`[Webhook] Received generic /start command (no VERIFY_ payload) from chat ID: ${chatId}`);
      bot.sendMessage(chatId, "Welcome to TeleVerify! To verify your phone number for a website, please initiate the process from that website. You will then be given a specific link to click which will bring you back here to receive your code.");
   });
 
 
   bot.on("polling_error", (error: any) => {
-    // This should ideally not happen if webhooks are working correctly
     console.error(
       "[Webhook] Telegram Bot Polling Error (should not occur with webhooks):",
       error.code || "unknown",
@@ -140,6 +210,7 @@ export async function POST(request: NextRequest) {
         from: update.message.from?.username || update.message.from?.id,
         isBot: update.message.from?.is_bot,
         date: new Date(update.message.date * 1000).toISOString(),
+        contact: update.message.contact // Log contact info if present
       });
     }
 
@@ -180,6 +251,3 @@ export async function GET(request: NextRequest) {
       "Telegram webhook is active and bot token seems to be configured. Use POST for updates from Telegram.",
   });
 }
-
-// Removed old /receive and subsequent message handling logic as the KICKOFF_ flow is now primary.
-// The usersAwaitingPhoneNumber Set is also removed as it's not used by the KICKOFF_ flow.

@@ -20,6 +20,7 @@ import {
   Copy,
   LogOut,
   Info,
+  Smartphone,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ function VerifyTelegramContent() {
   const { toast } = useToast();
   
   const pendingId = searchParams.get("pendingId");
+  // const websitePhoneNumber = searchParams.get("phone"); // No longer passing phone directly in URL
 
   const initialFormState: ActionFormState = { success: false, message: "" };
   const [verifyCodeFormState, verifyCodeFormAction] = useActionState<
@@ -73,7 +75,6 @@ function VerifyTelegramContent() {
   const [isVerified, setIsVerified] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [countdown, setCountdown] = useState(3);
-  const [associatedPhoneNumber, setAssociatedPhoneNumber] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -85,9 +86,6 @@ function VerifyTelegramContent() {
       });
       router.push("/"); 
     }
-    // If you want to display the phone number, you'd need to fetch it based on pendingId
-    // For now, we'll rely on the bot to confirm which number the code is for.
-    // Or, have the verifyCodeAction return it upon success.
   }, [pendingId, router, toast]);
 
   useEffect(() => {
@@ -193,8 +191,8 @@ function VerifyTelegramContent() {
     );
   }
   
-  // KICKOFF_ prefix is for the bot to identify the payload type
-  const telegramBotDeeplinkPayload = `KICKOFF_${pendingId}`;
+  // Use a prefix for the payload to help the bot identify it
+  const telegramBotDeeplinkPayload = `VERIFY_${pendingId}`;
   const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${telegramBotDeeplinkPayload}`;
   const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}&start=${telegramBotDeeplinkPayload}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
@@ -214,7 +212,7 @@ function VerifyTelegramContent() {
       <CardContent className="space-y-6">
         <div className="space-y-3 text-left text-sm">
           <p className="flex items-start">
-            <span className="font-semibold mr-2">1.</span> Click a button below or scan the QR code to open our Telegram bot. This will automatically start the process.
+            <span className="font-semibold mr-2">1.</span> Click a button below or scan the QR code. This will open our Telegram bot and start the process.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center my-2">
             <Button asChild variant="outline">
@@ -247,10 +245,13 @@ function VerifyTelegramContent() {
             />
           </div>
            <p className="flex items-start">
-            <span className="font-semibold mr-2">2.</span> Our bot will send you a 6-digit code.
+            <span className="font-semibold mr-2">2.</span> The bot will ask you to <strong className="mx-1">Share Contact</strong>. Please tap the button it provides.
           </p>
            <p className="flex items-start">
-            <span className="font-semibold mr-2">3.</span> Enter that code below.
+            <span className="font-semibold mr-2">3.</span> If the phone number from your shared contact matches the one you entered on our website, the bot will send you a 6-digit code.
+          </p>
+          <p className="flex items-start">
+            <span className="font-semibold mr-2">4.</span> Enter that code below.
           </p>
         </div>
 
@@ -258,7 +259,7 @@ function VerifyTelegramContent() {
             <Info className="h-4 w-4" />
             <AlertTitle>Pending ID</AlertTitle>
             <AlertDescription>
-                Your current verification session ID is: <code className="font-mono bg-muted p-1 rounded">{pendingId}</code>.
+                Your current verification session ID is: <code className="font-mono bg-muted p-1 rounded">{pendingId.substring(0,8)}...</code>.
                 The bot will use this.
             </AlertDescription>
         </Alert>
