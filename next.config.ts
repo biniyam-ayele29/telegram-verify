@@ -28,6 +28,20 @@ const nextConfig: NextConfig = {
   experimental: {
     allowedDevOrigins: ["https://*.ngrok-free.app", "https://*.ngrok.io"],
   },
+  // Add headers to allow font loading
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

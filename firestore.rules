@@ -16,6 +16,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Allow read and write access to the telegramBotSessions collection
+    match /telegramBotSessions/{sessionId} {
+      allow read, write: if true;
+    }
+
     // Allow read access to client applications collection
     match /clientApplications/{clientId} {
       allow read: if true;
