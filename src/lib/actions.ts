@@ -2,28 +2,33 @@
 // src/lib/actions.ts
 "use server";
 
+import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
 import { generateVerificationCode } from "@/ai/flows/generate-verification-code";
 import type { GenerateVerificationCodeOutput } from "@/ai/flows/generate-verification-code";
 import {
+  PartialPhoneSchema,
   FullPhoneNumberSchema,
+  CODE_EXPIRATION_MS,
+  MAX_VERIFICATION_ATTEMPTS_ON_WEBSITE,
+  type VerificationAttempt,
 } from "./verification-shared";
 import {
-  storeVerificationCode,
-  getVerificationCode,
-  updateVerificationCode,
-  deleteVerificationCode,
-} from "./firestore-operations"; // Corrected import names
-import { CODE_EXPIRATION_MS, MAX_VERIFICATION_ATTEMPTS } from "./verification-shared";
-import { getClientApplicationByClientId } from "./client-actions"; // Import client action
+  storeVerificationAttempt,
+  getVerificationAttemptById,
+  updateVerificationAttempt,
+  // deleteVerificationAttempt, // We might not delete immediately, just update status
+} from "./firestore-operations";
+import { getClientApplicationByClientId } from "./client-actions";
 
-// ActionFormState remains here as it's specific to the actions
 export interface ActionFormState {
   success: boolean;
   message: string;
   field?: string;
-  redirectUrl?: string; // For navigation between steps in TeleVerify
+  redirectUrl?: string; // For navigation to /verify-telegram with pendingId
   toastMessage?: string;
   finalRedirectUrl?: string; // For redirecting back to the client app
+  pendingId?: string; // To pass pendingVerificationId to the client
 }
 
 export async function sendCodeAction(
@@ -34,24 +39,38 @@ export async function sendCodeAction(
 
   const countryCode = (formData.get("countryCode") as string) ?? "";
   const localPhoneNumber = (formData.get("localPhoneNumber") as string) ?? "";
+  const clientId = (formData.get("clientId") as string) ?? ""; // clientId is passed from the form
 
-  if (!countryCode || !localPhoneNumber) {
-    console.error("[sendCodeAction] Missing phone number components");
+  if (!clientId) {
+     console.error("[sendCodeAction] Client ID is missing from form data.");
+     return {
+       success: false,
+       message: "Client identifier is missing. Cannot proceed.",
+       toastMessage: "An error occurred: Client ID missing.",
+     };
+  }
+
+  const validatedPartialPhone = PartialPhoneSchema.safeParse({ countryCode, localPhoneNumber });
+  if (!validatedPartialPhone.success) {
+    const fieldErrors = validatedPartialPhone.error.flatten().fieldErrors;
+    const firstErrorField = Object.keys(fieldErrors)[0] as keyof typeof fieldErrors;
+    const firstErrorMessage = fieldErrors[firstErrorField]?.[0] || "Invalid phone input.";
+     console.error(`[sendCodeAction] Invalid partial phone input: ${firstErrorMessage}`);
     return {
       success: false,
-      message: "Phone number components are missing.",
-      field: !countryCode ? "countryCode" : "localPhoneNumber",
-      toastMessage: "Please provide both country code and phone number.",
+      message: firstErrorMessage,
+      field: firstErrorField,
+      toastMessage: "Please check your phone number.",
     };
   }
 
-  const fullPhoneNumber = `${countryCode}${localPhoneNumber}`;
-  console.log(`[sendCodeAction] Processing phone number: ${fullPhoneNumber}`);
+  const fullPhoneNumber = `${validatedPartialPhone.data.countryCode}${validatedPartialPhone.data.localPhoneNumber}`;
+  console.log(`[sendCodeAction] Processing full phone number: ${fullPhoneNumber} for clientId: ${clientId}`);
 
   const validationResult = FullPhoneNumberSchema.safeParse(fullPhoneNumber);
   if (!validationResult.success) {
     console.error(
-      `[sendCodeAction] Invalid phone number format: ${fullPhoneNumber}. Error: ${validationResult.error.errors[0].message}`
+      `[sendCodeAction] Invalid full phone number format: ${fullPhoneNumber}. Error: ${validationResult.error.errors[0].message}`
     );
     return {
       success: false,
@@ -63,34 +82,40 @@ export async function sendCodeAction(
 
   try {
     const aiResponse: GenerateVerificationCodeOutput =
-      await generateVerificationCode({ fullPhoneNumber });
+      await generateVerificationCode({ fullPhoneNumber }); // Genkit flow still takes fullPhoneNumber
     console.log(
       `[sendCodeAction] AI response for ${fullPhoneNumber}:`,
       JSON.stringify(aiResponse)
     );
 
     if (aiResponse.success && aiResponse.verificationCode) {
-      const storedCodeData = {
+      const pendingVerificationId = uuidv4();
+      const now = Date.now();
+
+      const newAttempt: VerificationAttempt = {
+        id: pendingVerificationId,
+        clientId: clientId,
         fullPhoneNumber,
         code: aiResponse.verificationCode,
-        expiresAt: Date.now() + CODE_EXPIRATION_MS,
-        attemptsRemaining: MAX_VERIFICATION_ATTEMPTS,
-        telegramChatId: -1,
+        expiresAt: now + CODE_EXPIRATION_MS,
+        attemptsRemaining: MAX_VERIFICATION_ATTEMPTS_ON_WEBSITE,
+        telegramChatId: null,
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
       };
 
-      await storeVerificationCode(fullPhoneNumber, storedCodeData); // Corrected function call
+      await storeVerificationAttempt(newAttempt);
       console.log(
-        `[sendCodeAction] Stored verification data for ${fullPhoneNumber} in Firestore. Code: ${aiResponse.verificationCode}`
+        `[sendCodeAction] Stored verification attempt in Firestore with id: ${pendingVerificationId} for phone: ${fullPhoneNumber}`
       );
 
       return {
         success: true,
-        message: "Verification code generated. Redirecting user.",
-        toastMessage:
-          "Code ready! Go to our Telegram bot, type /receive, then send your phone number.",
-        redirectUrl: `/verify-telegram?phone=${encodeURIComponent(
-          fullPhoneNumber
-        )}`,
+        message: "Verification process initiated. Redirecting user.",
+        toastMessage: "Follow instructions to get your code via Telegram.",
+        redirectUrl: `/verify-telegram?pendingId=${pendingVerificationId}`,
+        pendingId: pendingVerificationId,
       };
     } else {
       console.error(
@@ -110,6 +135,14 @@ export async function sendCodeAction(
       `[sendCodeAction] Error in code generation process for ${fullPhoneNumber}:`,
       error.message || error
     );
+    // Check for Firestore permission errors specifically
+    if (error.message?.includes("PERMISSION_DENIED")) {
+        return {
+            success: false,
+            message: "Database permission error. Please check server logs and Firestore rules.",
+            toastMessage: "A configuration error occurred. Please contact support.",
+        };
+    }
     return {
       success: false,
       message: `Error in code generation: ${error.message || "Unknown error"}`,
@@ -124,51 +157,62 @@ export async function verifyCodeAction(
   formData: FormData
 ): Promise<ActionFormState> {
   const verificationCode = (formData.get("verificationCode") as string) ?? "";
-  const fullPhoneNumber = (formData.get("fullPhoneNumber") as string) ?? "";
-  const clientId = (formData.get("clientId") as string) ?? ""; // Get clientId from form
+  const pendingId = (formData.get("pendingId") as string) ?? "";
 
-  if (!verificationCode || !fullPhoneNumber) {
+  console.log(`[verifyCodeAction] Verifying OTP: ${verificationCode} for pendingId: ${pendingId}`);
+
+  if (!verificationCode || !pendingId) {
     return {
       success: false,
-      message: "Missing verification code or phone number.",
+      message: "Missing verification code or identifier.",
       field: !verificationCode ? "verificationCode" : undefined,
-      toastMessage: "Please provide both verification code and phone number.",
+      toastMessage: "Please provide the code and ensure the session is valid.",
     };
   }
-   if (!clientId) {
-    // This case should ideally not happen if form is set up correctly
-    return {
-      success: false,
-      message: "Client ID is missing. Cannot proceed with final redirection.",
-      toastMessage: "An error occurred (missing client identifier).",
-    };
-  }
-
 
   try {
-    const storedData = await getVerificationCode(fullPhoneNumber); // Corrected function call
+    const attempt = await getVerificationAttemptById(pendingId);
 
-    if (!storedData) {
+    if (!attempt) {
+      console.warn(`[verifyCodeAction] No verification attempt found for pendingId: ${pendingId}.`);
       return {
         success: false,
-        message: "No verification code found for this phone number. It might have expired or not been requested.",
-        field: "verificationCode",
-        toastMessage: "Please request a new verification code.",
+        message: "Verification session not found. It might have expired or is invalid.",
+        field: "verificationCode", // Or a general error
+        toastMessage: "Invalid session. Please start over.",
       };
     }
 
-    if (storedData.attemptsRemaining <= 0) {
-      await deleteVerificationCode(fullPhoneNumber); // Corrected function call
+    if (attempt.status === 'verified') {
+      console.warn(`[verifyCodeAction] Attempt ${pendingId} already verified.`);
+      // Potentially redirect if already verified and client app known
+       const clientApp = await getClientApplicationByClientId(attempt.clientId);
+       let finalRedirectUrl: string | undefined = undefined;
+       if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
+           finalRedirectUrl = clientApp.redirectUris[0];
+       }
       return {
-        success: false,
-        message: "Too many failed attempts. Please request a new code.",
-        field: "verificationCode",
-        toastMessage: "Too many failed attempts. Please request a new code.",
+        success: true,
+        message: "Already verified. Redirecting...",
+        toastMessage: "This number is already verified.",
+        finalRedirectUrl: finalRedirectUrl,
       };
     }
+    
+    if (attempt.status !== 'code_sent') {
+        console.warn(`[verifyCodeAction] Attempt ${pendingId} has status ${attempt.status}, expected 'code_sent'.`);
+        return {
+            success: false,
+            message: "Verification process not in correct state. Please ensure you received code via Telegram.",
+            field: "verificationCode",
+            toastMessage: "Verification process issue. Try getting code from Telegram again.",
+        };
+    }
 
-    if (Date.now() > storedData.expiresAt) {
-      await deleteVerificationCode(fullPhoneNumber); // Corrected function call
+
+    if (Date.now() > attempt.expiresAt) {
+      await updateVerificationAttempt(pendingId, { status: 'expired' });
+      console.warn(`[verifyCodeAction] Code expired for pendingId: ${pendingId}`);
       return {
         success: false,
         message: "Verification code has expired.",
@@ -177,35 +221,41 @@ export async function verifyCodeAction(
       };
     }
 
-    if (verificationCode !== storedData.code) {
-      await updateVerificationCode(fullPhoneNumber, { // Corrected function call
-        attemptsRemaining: storedData.attemptsRemaining - 1,
-      });
+    if (attempt.attemptsRemaining <= 0) {
+      await updateVerificationAttempt(pendingId, { status: 'failed_too_many_attempts' });
+      console.warn(`[verifyCodeAction] No attempts remaining for pendingId: ${pendingId}`);
+      return {
+        success: false,
+        message: "Too many failed attempts. Please start the process again.",
+        field: "verificationCode",
+        toastMessage: "No attempts left. Please start over.",
+      };
+    }
 
+    if (verificationCode !== attempt.code) {
+      const newAttemptsRemaining = attempt.attemptsRemaining - 1;
+      await updateVerificationAttempt(pendingId, { attemptsRemaining: newAttemptsRemaining });
+      console.warn(`[verifyCodeAction] Invalid code for pendingId: ${pendingId}. Attempts left: ${newAttemptsRemaining}`);
       return {
         success: false,
         message: "Invalid verification code.",
         field: "verificationCode",
-        toastMessage: `Invalid code. ${
-          storedData.attemptsRemaining - 1
-        } attempts remaining.`,
+        toastMessage: `Invalid code. ${newAttemptsRemaining} attempts remaining.`,
       };
     }
 
     // Code is valid
-    await deleteVerificationCode(fullPhoneNumber); // Corrected function call, clean up used code
+    await updateVerificationAttempt(pendingId, { status: 'verified', updatedAt: Date.now() });
+    console.log(`[verifyCodeAction] Successfully verified OTP for pendingId: ${pendingId}. Phone: ${attempt.fullPhoneNumber}`);
 
-    // Fetch client application to get redirect URI
-    const clientApp = await getClientApplicationByClientId(clientId);
+    const clientApp = await getClientApplicationByClientId(attempt.clientId);
     let finalRedirectUrl: string | undefined = undefined;
 
     if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
-      finalRedirectUrl = clientApp.redirectUris[0]; // Use the first registered URI
-      console.log(`[verifyCodeAction] Successfully verified. Client: ${clientApp.companyName}. Redirecting to: ${finalRedirectUrl}`);
+      finalRedirectUrl = clientApp.redirectUris[0]; 
+      console.log(`[verifyCodeAction] Client: ${clientApp.companyName}. Redirecting to: ${finalRedirectUrl}`);
     } else {
-      console.warn(`[verifyCodeAction] Client app not found, inactive, or no redirect URIs for clientId: ${clientId}. Cannot perform final redirect.`);
-      // User is verified with TeleVerify, but we can't redirect them back to client.
-      // They will just see the success message on TeleVerify page.
+      console.warn(`[verifyCodeAction] Client app not found, inactive, or no redirect URIs for clientId: ${attempt.clientId} on pendingId: ${pendingId}. Cannot perform final redirect.`);
     }
 
     return {
@@ -216,7 +266,7 @@ export async function verifyCodeAction(
     };
   } catch (error: any) {
     console.error(
-      `[verifyCodeAction] Error verifying code for ${fullPhoneNumber}:`,
+      `[verifyCodeAction] Error verifying code for pendingId ${pendingId}:`,
       error.message || error
     );
     return {

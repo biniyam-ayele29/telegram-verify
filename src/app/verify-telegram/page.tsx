@@ -14,13 +14,12 @@ import {
   KeyRound,
   Loader2,
   BotMessageSquare,
-  QrCode,
   ExternalLink,
   CheckCircle2,
   ShieldAlert,
-  MessageSquareText, 
   Copy,
   LogOut,
+  Info,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -45,14 +44,12 @@ import { useToast } from "@/hooks/use-toast";
 import { verifyCodeAction, type ActionFormState } from "@/lib/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { TeleVerifyLogo } from "@/components/icons/logo";
+import { VerificationCodeSchema } from "@/lib/verification-shared";
 
-const TELEGRAM_BOT_USERNAME = "Firegebeyaouthbot"; 
+const TELEGRAM_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || "Firegebeyaouthbot"; // Use env var or default
 
-const codeSchema = z.object({
-  verificationCode: z
-    .string()
-    .length(6, "Code must be 6 digits.")
-    .regex(/^\d{6}$/, "Code must be 6 digits."),
+const otpFormSchema = z.object({
+  verificationCode: VerificationCodeSchema,
 });
 
 function VerifyTelegramContent() {
@@ -60,8 +57,7 @@ function VerifyTelegramContent() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
   
-  const fullPhoneNumber = searchParams.get("phone");
-  const clientId = searchParams.get("clientId"); // Get clientId from URL
+  const pendingId = searchParams.get("pendingId");
 
   const initialFormState: ActionFormState = { success: false, message: "" };
   const [verifyCodeFormState, verifyCodeFormAction] = useActionState<
@@ -69,38 +65,41 @@ function VerifyTelegramContent() {
     FormData
   >(verifyCodeAction, initialFormState);
 
-  const codeForm = useForm<z.infer<typeof codeSchema>>({
-    resolver: zodResolver(codeSchema),
+  const otpForm = useForm<z.infer<typeof otpFormSchema>>({
+    resolver: zodResolver(otpFormSchema),
     defaultValues: { verificationCode: "" },
   });
 
   const [isVerified, setIsVerified] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [countdown, setCountdown] = useState(3);
+  const [associatedPhoneNumber, setAssociatedPhoneNumber] = useState<string | null>(null);
 
 
   useEffect(() => {
-    if (!fullPhoneNumber || !clientId) { // Check for clientId too
+    if (!pendingId) {
       toast({
         title: "Error",
-        description: "Phone number or client identifier missing. Please start over.",
+        description: "Verification identifier missing. Please start over.",
         variant: "destructive",
       });
       router.push("/"); 
     }
-  }, [fullPhoneNumber, clientId, router, toast]);
+    // If you want to display the phone number, you'd need to fetch it based on pendingId
+    // For now, we'll rely on the bot to confirm which number the code is for.
+    // Or, have the verifyCodeAction return it upon success.
+  }, [pendingId, router, toast]);
 
   useEffect(() => {
     if (verifyCodeFormState?.message) {
       if (verifyCodeFormState.success) {
-        setIsVerified(true); // Set verification success
+        setIsVerified(true);
         toast({
           title: "Verified!",
-          description: verifyCodeFormState.message, // This message might now include "Redirecting..."
+          description: verifyCodeFormState.message,
           variant: "default",
         });
 
-        // Handle redirection if finalRedirectUrl is provided
         if (verifyCodeFormState.finalRedirectUrl) {
           setIsRedirecting(true);
           let currentCountdown = 3;
@@ -112,7 +111,7 @@ function VerifyTelegramContent() {
               router.push(verifyCodeFormState.finalRedirectUrl!);
             }
           }, 1000);
-          return () => clearInterval(intervalId); // Cleanup interval on unmount
+          return () => clearInterval(intervalId); 
         }
 
       } else {
@@ -122,28 +121,19 @@ function VerifyTelegramContent() {
           variant: "destructive",
         });
         if (verifyCodeFormState.field === "verificationCode") {
-          codeForm.setError("verificationCode", {
+          otpForm.setError("verificationCode", {
             type: "manual",
             message: verifyCodeFormState.message,
           });
         } else {
-          codeForm.setError("root.serverError", {
+          otpForm.setError("root.serverError", {
             type: "manual",
             message: verifyCodeFormState.message,
           });
         }
       }
     }
-  }, [verifyCodeFormState, toast, codeForm, router]);
-
-  const copyToClipboard = (text: string) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      toast({ title: "Copied!", description: `${text} copied to clipboard.` });
-    }).catch(err => {
-      toast({ title: "Error", description: "Failed to copy.", variant: "destructive" });
-    });
-  };
+  }, [verifyCodeFormState, toast, otpForm, router]);
 
   const SubmitButton = ({
     children,
@@ -167,13 +157,13 @@ function VerifyTelegramContent() {
         <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto mb-2" />
         <AlertTitle className="font-bold text-lg">Verification Successful!</AlertTitle>
         <AlertDescription>
-          Your phone number ({fullPhoneNumber}) has been successfully verified.
+          Your phone number has been successfully verified.
           {isRedirecting && verifyCodeFormState.finalRedirectUrl && (
             <p className="mt-2">
               Redirecting you back in {countdown}...
             </p>
           )}
-           {!isRedirecting && ( // Only show "Verify Another" if not redirecting elsewhere
+           {!isRedirecting && ( 
             <Button
               onClick={() => router.push("/")}
               variant="link"
@@ -187,14 +177,13 @@ function VerifyTelegramContent() {
     );
   }
 
-  if (!fullPhoneNumber || !clientId) {
-    // Initial check for missing params
+  if (!pendingId) {
     return (
       <Alert variant="destructive" className="mt-4">
         <ShieldAlert className="h-5 w-5" />
         <AlertTitle>Missing Information</AlertTitle>
         <AlertDescription>
-          The phone number or client information for verification is missing. Please{" "}
+          The verification identifier is missing. Please{" "}
           <a href="/" className="underline">
             start over
           </a>
@@ -203,9 +192,11 @@ function VerifyTelegramContent() {
       </Alert>
     );
   }
-
-  const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}`;
-  const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}`;
+  
+  // KICKOFF_ prefix is for the bot to identify the payload type
+  const telegramBotDeeplinkPayload = `KICKOFF_${pendingId}`;
+  const telegramBotUrl = `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${telegramBotDeeplinkPayload}`;
+  const telegramAppUrl = `tg://resolve?domain=${TELEGRAM_BOT_USERNAME}&start=${telegramBotDeeplinkPayload}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
     telegramBotUrl 
   )}`;
@@ -217,19 +208,13 @@ function VerifyTelegramContent() {
           Verify via Telegram
         </CardTitle>
         <CardDescription className="text-center text-muted-foreground pt-1">
-          Follow these steps to get your code for:
-          <div className="font-semibold text-foreground my-1 p-2 bg-secondary rounded-md flex items-center justify-between">
-            <span>{fullPhoneNumber}</span>
-            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(fullPhoneNumber || "")} aria-label="Copy phone number">
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
+          Follow these steps to get your verification code.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-3 text-left text-sm">
           <p className="flex items-start">
-            <span className="font-semibold mr-2">1.</span> Open our Telegram bot:
+            <span className="font-semibold mr-2">1.</span> Click a button below or scan the QR code to open our Telegram bot. This will automatically start the process.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center my-2">
             <Button asChild variant="outline">
@@ -262,16 +247,22 @@ function VerifyTelegramContent() {
             />
           </div>
            <p className="flex items-start">
-            <span className="font-semibold mr-2">2.</span> In the bot, type and send the command:
-            <code className="ml-2 p-1 bg-muted rounded text-foreground inline-block font-mono">/receive</code>
+            <span className="font-semibold mr-2">2.</span> Our bot will send you a 6-digit code.
           </p>
-          <p className="flex items-start">
-            <span className="font-semibold mr-2">3.</span> The bot will then expect your phone number. As a new message, send your full phone number: <strong className="ml-1">{fullPhoneNumber}</strong> (the one you entered on our site).
-          </p>
-          <p className="flex items-start">
-            <span className="font-semibold mr-2">4.</span> If the phone number matches the one you entered here and on our site, the bot will send you the 6-digit code.
+           <p className="flex items-start">
+            <span className="font-semibold mr-2">3.</span> Enter that code below.
           </p>
         </div>
+
+        <Alert variant="default">
+            <Info className="h-4 w-4" />
+            <AlertTitle>Pending ID</AlertTitle>
+            <AlertDescription>
+                Your current verification session ID is: <code className="font-mono bg-muted p-1 rounded">{pendingId}</code>.
+                The bot will use this.
+            </AlertDescription>
+        </Alert>
+
 
         <hr className="my-6 border-border" />
 
@@ -279,21 +270,18 @@ function VerifyTelegramContent() {
           <p className="text-sm text-foreground text-center mb-3">
             Enter the 6-digit code from the bot:
           </p>
-          <Form {...codeForm}>
+          <Form {...otpForm}>
             <form
               action={(formData) => {
-                if (fullPhoneNumber) {
-                  formData.append("fullPhoneNumber", fullPhoneNumber);
-                }
-                if (clientId) { // Add clientId to the form data
-                  formData.append("clientId", clientId);
+                if (pendingId) {
+                  formData.append("pendingId", pendingId);
                 }
                 verifyCodeFormAction(formData);
               }}
               className="space-y-4"
             >
               <FormField
-                control={codeForm.control}
+                control={otpForm.control}
                 name="verificationCode"
                 render={({ field }) => (
                   <FormItem>
@@ -318,9 +306,9 @@ function VerifyTelegramContent() {
                   </FormItem>
                 )}
               />
-              {codeForm.formState.errors.root?.serverError && (
+              {otpForm.formState.errors.root?.serverError && (
                 <p className="text-sm font-medium text-destructive">
-                  {codeForm.formState.errors.root.serverError.message}
+                  {otpForm.formState.errors.root.serverError.message}
                 </p>
               )}
               <SubmitButton icon={<KeyRound className="mr-2 h-4 w-4" />}>
@@ -337,14 +325,13 @@ function VerifyTelegramContent() {
           className="mx-auto text-sm"
           disabled={isRedirecting}
         >
-          Start Over / Change Number
+          Start Over
         </Button>
         { isVerified && verifyCodeFormState.finalRedirectUrl && (
            <Button
             variant="outline"
             onClick={() => router.push(verifyCodeFormState.finalRedirectUrl!)}
             className="mx-auto text-sm"
-            disabled={!isRedirecting}
           >
             <LogOut className="mr-2 h-4 w-4" /> Go to Client App Now
           </Button>

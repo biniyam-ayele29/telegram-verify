@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { sendCodeAction, type ActionFormState } from "@/lib/actions";
+import { PartialPhoneSchema } from "@/lib/verification-shared"; // Using PartialPhoneSchema for form validation
 
 const africanCountries = [
   { name: "Algeria", code: "+213" }, { name: "Angola", code: "+244" },
@@ -48,19 +49,8 @@ const africanCountries = [
   { name: "Zambia", code: "+260" }, { name: "Zimbabwe", code: "+263" },
 ];
 
-const phoneSchema = z.object({
-  countryCode: z.string()
-    .min(1, "Please select a country code.")
-    .max(5, "Country code is too long.")
-    .regex(/^\+\d{1,4}$/, "Invalid country code format."),
-  localPhoneNumber: z.string()
-    .min(7, "Phone number is too short.")
-    .max(14, "Phone number is too long.")
-    .regex(/^\d+$/, "Phone number must contain only digits."),
-});
-
 interface PhoneVerificationFormProps {
-  clientId: string; // Added clientId prop
+  clientId: string; 
 }
 
 export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) {
@@ -70,8 +60,8 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
   const initialFormState: ActionFormState = { success: false, message: "" };
   const [sendCodeFormState, sendCodeFormAction] = useActionState<ActionFormState, FormData>(sendCodeAction, initialFormState);
   
-  const phoneForm = useForm<z.infer<typeof phoneSchema>>({
-    resolver: zodResolver(phoneSchema),
+  const phoneForm = useForm<z.infer<typeof PartialPhoneSchema>>({
+    resolver: zodResolver(PartialPhoneSchema),
     defaultValues: { countryCode: "+251", localPhoneNumber: "" }, // Default to Ethiopia
   });
 
@@ -81,10 +71,8 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
   
     if (sendCodeFormState && sendCodeFormState.success && sendCodeFormState.redirectUrl) {
       let urlToRedirect = sendCodeFormState.redirectUrl;
-      // Append clientId to the redirectUrl for the /verify-telegram page
-      if (clientId && urlToRedirect.startsWith('/verify-telegram')) {
-        urlToRedirect += `&clientId=${encodeURIComponent(clientId)}`;
-      }
+      // The redirectUrl from sendCodeAction will now be like /verify-telegram?pendingId=...
+      // No need to append clientId here as it will be stored in the pending verification document.
       const toastMsg = sendCodeFormState.toastMessage;
   
       console.log(`[PhoneVerificationForm SUCCESS_EFFECT] Conditions met. Toast: "${toastMsg}". Attempting to redirect to: "${urlToRedirect}"`);
@@ -96,14 +84,14 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
       const timerId = setTimeout(() => {
         console.log(`[PhoneVerificationForm SUCCESS_EFFECT] setTimeout: Executing router.push to "${urlToRedirect}"`);
         router.push(urlToRedirect);
-      }, 0);
+      }, 0); 
   
       return () => {
         console.log("[PhoneVerificationForm SUCCESS_EFFECT] Cleanup: Clearing timeout for redirection.");
         clearTimeout(timerId);
       };
     }
-  }, [sendCodeFormState, router, toast, clientId]); // Added clientId to dependency array
+  }, [sendCodeFormState, router, toast]);
 
   // Effect for error handling
   useEffect(() => {
@@ -126,10 +114,11 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
           const fieldName = sendCodeFormState.field as "countryCode" | "localPhoneNumber" | "root.serverError";
           if (fieldName === "countryCode" || fieldName === "localPhoneNumber") {
             phoneForm.setError(fieldName, { type: "manual", message: sendCodeFormState.message });
-          } else {
+          } else { // 'root.serverError' or any other general error
             phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
           }
         } else {
+             // If no specific field, treat as a general server error for the form
             phoneForm.setError("root.serverError", { type: "manual", message: sendCodeFormState.message });
         }
     }
@@ -148,7 +137,13 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
 
   return (
     <Form {...phoneForm}>
-      <form action={sendCodeFormAction} className="space-y-6">
+      <form 
+        action={(formData) => {
+          formData.append("clientId", clientId); // Append clientId to the form data
+          sendCodeFormAction(formData);
+        }} 
+        className="space-y-6"
+      >
         <div className="flex space-x-2">
           <FormField
             control={phoneForm.control}
@@ -175,7 +170,7 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
                       ))}
                     </SelectContent>
                   </Select>
-                  {/* Hidden input to ensure value is submitted with FormData */}
+                  {/* Hidden input to ensure value is submitted with FormData for server actions */}
                   <input type="hidden" name={field.name} value={field.value} />
                 </div>
                 <FormMessage />

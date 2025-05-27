@@ -1,3 +1,4 @@
+
 import { PhoneVerificationForm } from "@/components/phone-verification-form";
 import { TeleVerifyLogo } from "@/components/icons/logo";
 import {
@@ -18,17 +19,23 @@ interface HomePageProps {
 // FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
 // if you want a default client when no client_id is in the URL.
 // Set to undefined or remove if you always want the client_id from the URL.
-const MANUAL_FALLBACK_CLIENT_ID: string | undefined =
-  "bf4c51f7-064c-430e-b4e2-c39a27985b49";
+const MANUAL_FALLBACK_CLIENT_ID: string | undefined = undefined; // "bf4c51f7-064c-430e-b4e2-c39a27985b49";
+
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  // Wait for searchParams to be available
-  const params = await Promise.resolve(searchParams);
+  const params = searchParams || {}; // Ensure searchParams is an object
   const clientIdFromUrl = params.client_id;
-  const clientIdToUse =
-    typeof clientIdFromUrl === "string"
+  
+  let clientIdToUse =
+    typeof clientIdFromUrl === "string" && clientIdFromUrl.trim() !== ""
       ? clientIdFromUrl
       : MANUAL_FALLBACK_CLIENT_ID;
+
+  if (clientIdToUse === MANUAL_FALLBACK_CLIENT_ID && !MANUAL_FALLBACK_CLIENT_ID) {
+      // If fallback is undefined and URL param is also missing/empty
+      clientIdToUse = undefined;
+  }
+
 
   let clientApp = null;
   let errorType:
@@ -41,24 +48,29 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   if (!clientIdToUse) {
     errorType = "missing_client_id";
     errorMessage =
-      "The client_id parameter is missing from the URL and no manual fallback is set or valid. Please ensure you are accessing this page through a valid client application link or configure a manual fallback client_id in the code.";
+      "The client_id parameter is missing from the URL or is invalid. Please ensure you are accessing this page through a valid client application link. If you are testing, ensure a valid MANUAL_FALLBACK_CLIENT_ID is set in src/app/page.tsx or provide a client_id in the URL.";
   } else {
     try {
+      console.log(`[HomePage] Attempting to fetch client application for clientId: ${clientIdToUse}`);
       clientApp = await getClientApplicationByClientId(clientIdToUse);
       if (!clientApp) {
         errorType = "invalid_client_id";
         errorMessage = `The provided client_id '${clientIdToUse}' is not recognized or invalid. Please check the link or contact the application provider.`;
+        console.warn(`[HomePage] Client ID ${clientIdToUse} not found or invalid.`);
       } else if (clientApp.status !== "active") {
         errorType = "inactive_client_id";
         errorMessage = `The client application '${
           clientApp?.companyName || clientIdToUse
         }' is currently inactive. Please contact the application provider.`;
+        console.warn(`[HomePage] Client ID ${clientIdToUse} found but is inactive. Company: ${clientApp.companyName}`);
+      } else {
+        console.log(`[HomePage] Successfully fetched active client: ${clientApp.companyName} (ID: ${clientIdToUse})`);
       }
     } catch (error) {
       console.error("[HomePage] Error fetching client application:", error);
-      errorType = "invalid_client_id";
+      errorType = "invalid_client_id"; // Treat fetch errors as invalid client for user
       errorMessage =
-        "Failed to verify client application. Please try again later.";
+        "Failed to verify client application due to a server error. Please try again later.";
     }
   }
 
@@ -66,7 +78,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     let title = "Authentication Error";
     switch (errorType) {
       case "missing_client_id":
-        title = "Client ID Missing";
+        title = "Client ID Missing or Invalid";
         break;
       case "invalid_client_id":
         title = "Invalid Client ID";
@@ -110,7 +122,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Pass clientIdToUse to the form */}
+              {/* Pass clientIdToUse to the form, ensuring it's not undefined */}
               <PhoneVerificationForm clientId={clientIdToUse!} />
             </CardContent>
           </Card>
