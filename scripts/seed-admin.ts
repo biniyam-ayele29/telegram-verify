@@ -15,8 +15,8 @@ const ADMIN_PASSWORD = 'GA$%dmin5';
 async function seedAdminUser() {
   console.log('Starting admin user seeding...');
 
-  if (!process.env.FIREBASE_PROJECT_ID) {
-    console.error("ERROR: Firebase Admin SDK environment variables (e.g., FIREBASE_PROJECT_ID) are not set.");
+  if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+    console.error("ERROR: Firebase Admin SDK environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are not fully set.");
     console.error("Please ensure your .env file is correctly populated with Firebase Admin credentials.");
     process.exit(1);
   }
@@ -58,3 +58,4 @@ seedAdminUser().then(() => {
     console.error('Unhandled error in seeding process:', err);
     process.exit(1);
 });
+
