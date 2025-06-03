@@ -11,7 +11,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check-webhook": "tsx src/scripts/check-webhook.ts",
-    "setup-webhook": "tsx src/scripts/verify-webhook.ts"
+    "setup-webhook": "tsx src/scripts/verify-webhook.ts",
+    "seed-admin": "tsx scripts/seed-admin.ts"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",
@@ -40,12 +41,14 @@
     "@tanstack-query-firebase/react": "^1.0.5",
     "@tanstack/react-query": "^5.66.0",
     "axios": "^1.7.2",
+    "bcrypt": "^5.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "firebase": "^11.7.3",
     "firebase-admin": "^12.2.0",
     "genkit": "^1.8.0",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.475.0",
     "next": "15.2.3",
     "node-telegram-bot-api": "^0.66.0",
@@ -61,6 +64,8 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20",
     "@types/node-telegram-bot-api": "^0.64.7",
     "@types/react": "^18",
