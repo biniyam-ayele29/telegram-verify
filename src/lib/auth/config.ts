@@ -11,3 +11,4 @@ if (process.env.NODE_ENV === 'production' && JWT_SECRET_KEY === 'fallback-secret
 export const AUTH_COOKIE_NAME = 'admin-auth-token';
 export const JWT_EXPIRATION = '1h'; // Token expiration time (e.g., 1 hour)
 export const ADMIN_USERS_COLLECTION = 'adminUsers';
+

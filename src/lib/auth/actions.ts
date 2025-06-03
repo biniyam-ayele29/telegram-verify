@@ -78,3 +78,4 @@ export async function logoutAdminAction(): Promise<void> {
   cookies().delete(AUTH_COOKIE_NAME);
   redirect('/admin/login');
 }
+

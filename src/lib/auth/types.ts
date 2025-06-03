@@ -19,3 +19,4 @@ export interface AdminAuthFormState {
   fieldErrors?: Record<string, string[] | undefined>;
   redirectTo?: string;
 }
+

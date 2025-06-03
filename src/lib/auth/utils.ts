@@ -28,3 +28,4 @@ export function verifyToken(token: string): JWTPayload | null {
     return null;
   }
 }
+
