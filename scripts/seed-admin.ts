@@ -58,4 +58,3 @@ seedAdminUser().then(() => {
     console.error('Unhandled error in seeding process:', err);
     process.exit(1);
 });
-

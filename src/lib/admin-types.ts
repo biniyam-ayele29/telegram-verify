@@ -1,3 +1,4 @@
+
 // src/lib/admin-types.ts
 
 export interface ClientApplication {

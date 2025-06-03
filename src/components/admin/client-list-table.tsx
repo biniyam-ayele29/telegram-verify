@@ -1,3 +1,4 @@
+
 // src/components/admin/client-list-table.tsx
 import { ClientApplication } from '@/lib/admin-types';
 import {

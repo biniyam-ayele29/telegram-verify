@@ -319,4 +319,3 @@ export async function GET(request: NextRequest) {
       "Telegram webhook is active and bot token seems to be configured. Use POST for updates from Telegram.",
   });
 }
-
