@@ -1,7 +1,8 @@
 
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-
+import dotenv from "dotenv";
+dotenv.config();
 // Initialize Firebase Admin
 let app: App;
 const apps = getApps();
