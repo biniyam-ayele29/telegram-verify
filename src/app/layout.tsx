@@ -23,7 +23,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} antialiased`}>
+      <head>
+        <meta name="react-dev-tools" content="false" />
+      </head>
+      <body
+        className={`${inter.className} antialiased`}
+        suppressHydrationWarning
+      >
         {children}
         <Toaster />
       </body>
