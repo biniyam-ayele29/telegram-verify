@@ -1,3 +1,4 @@
+
 // src/components/admin/client-list-table.tsx
 import Link from 'next/link';
 import { ClientApplication } from '@/lib/admin-types';
@@ -11,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns'; // Import isValid
 import { Pencil } from 'lucide-react';
 
 interface ClientListTableProps {
@@ -19,6 +20,12 @@ interface ClientListTableProps {
 }
 
 export default function ClientListTable({ applications }: ClientListTableProps) {
+  const formatDate = (dateInput: Date | string | number | undefined) => {
+    if (!dateInput) return 'N/A';
+    const date = new Date(dateInput);
+    return isValid(date) ? format(date, 'PPpp') : 'Invalid Date';
+  };
+
   return (
     <Table>
       <TableHeader>
@@ -45,7 +52,7 @@ export default function ClientListTable({ applications }: ClientListTableProps) 
               </Badge>
             </TableCell>
             <TableCell>
-              {app.createdAt ? format(new Date(app.createdAt), 'PPpp') : 'N/A'}
+              {formatDate(app.createdAt)}
             </TableCell>
             <TableCell className="text-right">
               <Button variant="outline" size="sm" asChild>
@@ -53,7 +60,7 @@ export default function ClientListTable({ applications }: ClientListTableProps) 
                   <Pencil className="mr-2 h-4 w-4" /> Edit
                 </Link>
               </Button>
-              {/* TODO: Add Disable action */}
+              {/* TODO: Add Disable/Enable action */}
             </TableCell>
           </TableRow>
         ))}

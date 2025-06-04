@@ -39,16 +39,23 @@ export default async function AdminClientsPage() {
         </Card>
       )}
 
-      {!error && applications && (
+      {!error && applications && applications.length > 0 && (
         <ClientListTable applications={applications} />
       )}
-       {!error && (!applications || applications.length === 0) && (
+       {!error && applications && applications.length === 0 && (
         <Card>
           <CardContent className="py-10 text-center">
             <p className="text-muted-foreground">No client applications found.</p>
             <Button variant="link" asChild className="mt-2">
               <Link href="/admin/clients/new">Add your first client</Link>
             </Button>
+          </CardContent>
+        </Card>
+      )}
+      {!error && !applications && (
+         <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-muted-foreground">Loading client applications or an unexpected error occurred.</p>
           </CardContent>
         </Card>
       )}
