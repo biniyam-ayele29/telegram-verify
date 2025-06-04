@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Enable standalone output for Docker
+  output: "standalone",
   // Suppress useLayoutEffect warnings in development
   onDemandEntries: {
     // Keeps the dev server alive between page loads
@@ -24,6 +26,18 @@ const nextConfig = {
         "react-dom$": "react-dom/profiling",
       };
     }
+
+    // Handle Node.js module warnings
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        crypto: false,
+        fs: false,
+        path: false,
+        os: false,
+      };
+    }
+
     return config;
   },
 };

@@ -11,17 +11,18 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ShieldAlert, Info } from "lucide-react";
 import { getClientApplicationByClientId } from "@/lib/client-actions";
 
-interface HomePageProps {
-  searchParams?: { [key: string]: string | string[] | undefined };
-}
-
 // FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
 // if you want a default client when no client_id is in the URL.
 // Set to undefined or remove if you always want the client_id from the URL.
 const MANUAL_FALLBACK_CLIENT_ID: string | undefined =
   "bf4c51f7-064c-430e-b4e2-c39a27985b49";
 
-export default async function HomePage({ searchParams }: HomePageProps) {
+interface PageProps {
+  params: { [key: string]: string | string[] };
+  searchParams: { [key: string]: string | string[] | undefined };
+}
+
+export default async function HomePage({ searchParams }: PageProps) {
   // Ensure searchParams is an object and handle potential undefined
   const params = searchParams ?? {};
 
