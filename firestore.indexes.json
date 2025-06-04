@@ -1,6 +1,27 @@
-
 {
   "indexes": [
+    {
+      "collectionGroup": "verificationAttempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "telegramChatId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "websitePhoneNumber",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
     {
       "collectionGroup": "verificationAttempts",
       "queryScope": "COLLECTION",

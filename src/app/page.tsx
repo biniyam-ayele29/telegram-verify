@@ -1,4 +1,3 @@
-
 import { PhoneVerificationForm } from "@/components/phone-verification-form";
 import { TeleVerifyLogo } from "@/components/icons/logo";
 import {
@@ -13,29 +12,37 @@ import { ShieldAlert, Info } from "lucide-react";
 import { getClientApplicationByClientId } from "@/lib/client-actions";
 
 interface HomePageProps {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams?: { [key: string]: string | string[] | undefined };
 }
 
 // FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
 // if you want a default client when no client_id is in the URL.
 // Set to undefined or remove if you always want the client_id from the URL.
-const MANUAL_FALLBACK_CLIENT_ID: string | undefined = "bf4c51f7-064c-430e-b4e2-c39a27985b49";
-
+const MANUAL_FALLBACK_CLIENT_ID: string | undefined =
+  "bf4c51f7-064c-430e-b4e2-c39a27985b49";
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const params = searchParams || {}; // Ensure searchParams is an object
-  const clientIdFromUrl = params.client_id;
-  
+  // Ensure searchParams is an object and handle potential undefined
+  const params = searchParams ?? {};
+
+  // Handle both string and string[] cases for client_id
+  const rawClientId = params.client_id;
+  const clientIdFromUrl = Array.isArray(rawClientId)
+    ? rawClientId[0]
+    : rawClientId;
+
   let clientIdToUse =
     typeof clientIdFromUrl === "string" && clientIdFromUrl.trim() !== ""
       ? clientIdFromUrl
       : MANUAL_FALLBACK_CLIENT_ID;
 
-  if (clientIdToUse === MANUAL_FALLBACK_CLIENT_ID && !MANUAL_FALLBACK_CLIENT_ID) {
-      // If fallback is undefined and URL param is also missing/empty
-      clientIdToUse = undefined;
+  if (
+    clientIdToUse === MANUAL_FALLBACK_CLIENT_ID &&
+    !MANUAL_FALLBACK_CLIENT_ID
+  ) {
+    // If fallback is undefined and URL param is also missing/empty
+    clientIdToUse = undefined;
   }
-
 
   let clientApp = null;
   let errorType:
@@ -51,20 +58,28 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       "The client_id parameter is missing from the URL or is invalid. Please ensure you are accessing this page through a valid client application link. If you are testing, ensure a valid MANUAL_FALLBACK_CLIENT_ID is set in src/app/page.tsx or provide a client_id in the URL.";
   } else {
     try {
-      console.log(`[HomePage] Attempting to fetch client application for clientId: ${clientIdToUse}`);
+      console.log(
+        `[HomePage] Attempting to fetch client application for clientId: ${clientIdToUse}`
+      );
       clientApp = await getClientApplicationByClientId(clientIdToUse);
       if (!clientApp) {
         errorType = "invalid_client_id";
         errorMessage = `The provided client_id '${clientIdToUse}' is not recognized or invalid. Please check the link or contact the application provider.`;
-        console.warn(`[HomePage] Client ID ${clientIdToUse} not found or invalid.`);
+        console.warn(
+          `[HomePage] Client ID ${clientIdToUse} not found or invalid.`
+        );
       } else if (clientApp.status !== "active") {
         errorType = "inactive_client_id";
         errorMessage = `The client application '${
           clientApp?.companyName || clientIdToUse
         }' is currently inactive. Please contact the application provider.`;
-        console.warn(`[HomePage] Client ID ${clientIdToUse} found but is inactive. Company: ${clientApp.companyName}`);
+        console.warn(
+          `[HomePage] Client ID ${clientIdToUse} found but is inactive. Company: ${clientApp.companyName}`
+        );
       } else {
-        console.log(`[HomePage] Successfully fetched active client: ${clientApp.companyName} (ID: ${clientIdToUse})`);
+        console.log(
+          `[HomePage] Successfully fetched active client: ${clientApp.companyName} (ID: ${clientIdToUse})`
+        );
       }
     } catch (error) {
       console.error("[HomePage] Error fetching client application:", error);
