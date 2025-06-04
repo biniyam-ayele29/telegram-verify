@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ShieldAlert, Info } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { getClientApplicationByClientId } from "@/lib/client-actions";
 
 // FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
@@ -17,12 +17,13 @@ import { getClientApplicationByClientId } from "@/lib/client-actions";
 const MANUAL_FALLBACK_CLIENT_ID: string | undefined =
   "bf4c51f7-064c-430e-b4e2-c39a27985b49";
 
-interface PageProps {
-  params: { [key: string]: string | string[] };
-  searchParams: { [key: string]: string | string[] | undefined };
-}
+type SearchParams = { [key: string]: string | string[] | undefined };
 
-export default async function HomePage({ searchParams }: PageProps) {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   // Ensure searchParams is an object and handle potential undefined
   const params = searchParams ?? {};
 

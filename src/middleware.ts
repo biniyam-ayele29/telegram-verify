@@ -7,11 +7,13 @@ import { AUTH_COOKIE_NAME } from "@/lib/auth/config"; // Adjust path as needed
 const ADMIN_PATH_PREFIX = "/admin";
 const ADMIN_LOGIN_PATH = "/admin/login";
 
+// Use experimental-edge runtime for middleware
+export const runtime = "experimental-edge";
+
 export const config = {
   // Matcher to specify which paths the middleware should run on.
   // This ensures it only runs for /admin/* routes.
   matcher: ["/admin/:path*"],
-  runtime: "nodejs",
 };
 
 export async function middleware(request: NextRequest) {
