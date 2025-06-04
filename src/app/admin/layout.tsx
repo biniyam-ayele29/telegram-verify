@@ -1,3 +1,4 @@
+
 // src/app/admin/layout.tsx
 import Link from "next/link";
 import { Shield, Users, LayoutDashboard, LogOut } from "lucide-react";
@@ -12,8 +13,8 @@ async function getAuthStatus() {
     const cookieStore = await cookies();
     const tokenCookie = cookieStore.get(AUTH_COOKIE_NAME);
     if (tokenCookie?.value) {
-      const decoded = verifyToken(tokenCookie.value);
-      return !!decoded; // True if token is valid, false otherwise
+      const decoded = await verifyToken(tokenCookie.value); // Added await
+      return !!decoded; 
     }
     return false;
   } catch (error) {

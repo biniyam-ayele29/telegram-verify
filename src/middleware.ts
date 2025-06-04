@@ -18,7 +18,7 @@ export async function middleware(request: NextRequest) {
 
     let isAuthenticated = false;
     if (token) {
-      const decodedToken = verifyToken(token);
+      const decodedToken = await verifyToken(token); // Added await
       if (decodedToken) {
         isAuthenticated = true;
       }
