@@ -1,7 +1,8 @@
-
 // src/lib/auth/config.ts
-export const JWT_SECRET_KEY = (process.env.JWT_SECRET_KEY && process.env.JWT_SECRET_KEY.trim() !== '')
-  ? process.env.JWT_SECRET_KEY
+// Ensure process.env.JWT_SECRET_KEY is a non-empty string, otherwise use fallback.
+const envSecretKey = process.env.JWT_SECRET_KEY;
+export const JWT_SECRET_KEY = (envSecretKey && envSecretKey.trim() !== '')
+  ? envSecretKey.trim() // Use .trim() here as well to remove potential surrounding whitespace
   : 'fallback-secret-key-for-dev-only-change-this';
 
 if (process.env.NODE_ENV === 'production' && JWT_SECRET_KEY === 'fallback-secret-key-for-dev-only-change-this') {

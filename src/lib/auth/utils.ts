@@ -36,6 +36,10 @@ export async function generateToken(payload: JWTPayload): Promise<string> {
 }
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
+  if (!token || typeof token !== 'string' || token.split('.').length !== 3) {
+    console.error("JWT verification failed: Token is null, not a string, or not a valid compact JWS format.");
+    return null;
+  }
   try {
     const secret = new Uint8Array(textEncoder.encode(JWT_SECRET_KEY));
     const { payload } = await jose.jwtVerify(token, secret);
@@ -61,4 +65,3 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
     return null;
   }
 }
-
