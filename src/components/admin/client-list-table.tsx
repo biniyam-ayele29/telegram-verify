@@ -1,5 +1,5 @@
-
 // src/components/admin/client-list-table.tsx
+import Link from 'next/link';
 import { ClientApplication } from '@/lib/admin-types';
 import {
   Table,
@@ -10,7 +10,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns'; // npm install date-fns
+import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
+import { Pencil } from 'lucide-react';
 
 interface ClientListTableProps {
   applications: ClientApplication[];
@@ -46,8 +48,12 @@ export default function ClientListTable({ applications }: ClientListTableProps) 
               {app.createdAt ? format(new Date(app.createdAt), 'PPpp') : 'N/A'}
             </TableCell>
             <TableCell className="text-right">
-              {/* TODO: Add Edit/Disable actions */}
-              <span className="text-xs text-muted-foreground">(Actions TBD)</span>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/admin/clients/${app.id}/edit`}>
+                  <Pencil className="mr-2 h-4 w-4" /> Edit
+                </Link>
+              </Button>
+              {/* TODO: Add Disable action */}
             </TableCell>
           </TableRow>
         ))}
