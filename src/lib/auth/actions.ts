@@ -54,7 +54,7 @@ export async function loginAdminAction(
     }
 
     const tokenPayload = { userId: userDoc.id, username: userData.username };
-    const token = generateToken(tokenPayload);
+    const token = await generateToken(tokenPayload); // Added await here
 
     cookies().set(AUTH_COOKIE_NAME, token, {
       httpOnly: true,
@@ -64,18 +64,15 @@ export async function loginAdminAction(
       maxAge: 60 * 60, // 1 hour, should match JWT_EXPIRATION
     });
     
-    // Instead of returning redirectTo, we call redirect directly
-    // This is the standard way for Server Actions to navigate after success
   } catch (error) {
     console.error('Login error:', error);
     return { success: false, message: 'An unexpected error occurred. Please try again.' };
   }
   
-  redirect('/admin'); // redirect here after setting cookie
+  redirect('/admin'); 
 }
 
 export async function logoutAdminAction(): Promise<void> {
   cookies().delete(AUTH_COOKIE_NAME);
   redirect('/admin/login');
 }
-
