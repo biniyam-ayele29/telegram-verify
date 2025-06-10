@@ -29,17 +29,46 @@ const nextConfig: NextConfig = {
   experimental: {
     allowedDevOrigins: ["https://*.ngrok-free.app", "https://*.ngrok.io"],
   },
-  // Add headers to allow font loading
+  // Add headers for security and font loading
   async headers() {
+    const baseHeaders = [
+      {
+        key: "Access-Control-Allow-Origin",
+        value: "*", // Be more restrictive in production if possible
+      },
+      {
+        key: "X-Content-Type-Options",
+        value: "nosniff",
+      },
+      {
+        key: "X-Frame-Options",
+        value: "DENY", // Use DENY to prevent clickjacking, or SAMEORIGIN if you need to frame your own content
+      },
+      {
+        key: "Referrer-Policy",
+        value: "strict-origin-when-cross-origin",
+      },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=(), payment=()", // Deny common sensitive permissions by default
+      },
+    ];
+
+    // Strict-Transport-Security should ideally only be sent over HTTPS
+    // In a real production setup, you'd ensure your environment correctly identifies HTTPS
+    // For simplicity here, it's added generally. Consider its implications.
+    if (process.env.NODE_ENV === 'production') {
+        baseHeaders.push({
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload", // 2 years
+        });
+    }
+
+
     return [
       {
         source: "/:path*",
-        headers: [
-          {
-            key: "Access-Control-Allow-Origin",
-            value: "*",
-          },
-        ],
+        headers: baseHeaders,
       },
     ];
   },
