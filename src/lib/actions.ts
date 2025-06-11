@@ -188,6 +188,12 @@ export async function verifyCodeAction(
        let finalRedirectUrl: string | undefined = undefined;
        if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
            finalRedirectUrl = clientApp.redirectUris[0];
+            // Append pendingId to the redirect URL
+            if (finalRedirectUrl) {
+                const url = new URL(finalRedirectUrl);
+                url.searchParams.append("verification_id", pendingId);
+                finalRedirectUrl = url.toString();
+            }
        }
       return {
         success: true,
@@ -253,20 +259,30 @@ export async function verifyCodeAction(
     console.log(`[verifyCodeAction] Successfully verified OTP for pendingId: ${pendingId}. Phone: ${attempt.websitePhoneNumber}`);
 
     const clientApp = await getClientApplicationByClientId(attempt.clientId);
-    let finalRedirectUrl: string | undefined = undefined;
+    let finalRedirectUrlWithId: string | undefined = undefined;
 
     if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
-      finalRedirectUrl = clientApp.redirectUris[0]; 
-      console.log(`[verifyCodeAction] Client: ${clientApp.companyName}. Redirecting to: ${finalRedirectUrl}`);
+      let baseRedirectUrl = clientApp.redirectUris[0]; 
+      console.log(`[verifyCodeAction] Client: ${clientApp.companyName}. Base redirect URI: ${baseRedirectUrl}`);
+      try {
+        const url = new URL(baseRedirectUrl);
+        url.searchParams.append("verification_id", pendingId);
+        finalRedirectUrlWithId = url.toString();
+        console.log(`[verifyCodeAction] Appending verification_id. Final redirect URL: ${finalRedirectUrlWithId}`);
+      } catch (e) {
+        console.error(`[verifyCodeAction] Invalid base redirect URI (${baseRedirectUrl}):`, e);
+        // Fallback to base URL if it's not a valid URL to append params
+        finalRedirectUrlWithId = baseRedirectUrl;
+      }
     } else {
-      console.warn(`[verifyCodeAction] Client app not found, inactive, or no redirect URIs for clientId: ${attempt.clientId} on pendingId: ${pendingId}. Cannot perform final redirect.`);
+      console.warn(`[verifyCodeAction] Client app not found, inactive, or no redirect URIs for clientId: ${attempt.clientId} on pendingId: ${pendingId}. Cannot perform final redirect or append verification_id.`);
     }
 
     return {
       success: true,
       message: "Phone number verified successfully! You will be redirected shortly.",
       toastMessage: "Phone number verified successfully! Redirecting...",
-      finalRedirectUrl: finalRedirectUrl,
+      finalRedirectUrl: finalRedirectUrlWithId,
     };
   } catch (error: any) {
     console.error(
@@ -281,3 +297,6 @@ export async function verifyCodeAction(
     };
   }
 }
+
+
+    
