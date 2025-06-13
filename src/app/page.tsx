@@ -14,37 +14,25 @@ import { getClientApplicationByClientId } from "@/lib/client-actions";
 // FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
 // if you want a default client when no client_id is in the URL.
 // Set to undefined or remove if you always want the client_id from the URL.
-const MANUAL_FALLBACK_CLIENT_ID: string | undefined =
-  "bf4c51f7-064c-430e-b4e2-c39a27985b49";
+const MANUAL_FALLBACK_CLIENT_ID: string | undefined = "";
 
-type SearchParams = { [key: string]: string | string[] | undefined };
+interface PageProps {
+  searchParams: { [key: string]: string | string[] | undefined };
+}
 
 export default async function HomePage({
   searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
-  // Ensure searchParams is an object and handle potential undefined
-  const params = searchParams ?? {};
+}: PageProps): Promise<JSX.Element> {
+  // Get client_id from searchParams
+  const clientIdFromUrl =
+    typeof searchParams?.client_id === "string"
+      ? searchParams.client_id
+      : Array.isArray(searchParams?.client_id)
+      ? searchParams.client_id[0]
+      : undefined;
 
-  // Handle both string and string[] cases for client_id
-  const rawClientId = params.client_id;
-  const clientIdFromUrl = Array.isArray(rawClientId)
-    ? rawClientId[0]
-    : rawClientId;
-
-  let clientIdToUse =
-    typeof clientIdFromUrl === "string" && clientIdFromUrl.trim() !== ""
-      ? clientIdFromUrl
-      : MANUAL_FALLBACK_CLIENT_ID;
-
-  if (
-    clientIdToUse === MANUAL_FALLBACK_CLIENT_ID &&
-    !MANUAL_FALLBACK_CLIENT_ID
-  ) {
-    // If fallback is undefined and URL param is also missing/empty
-    clientIdToUse = undefined;
-  }
+  // Use fallback if URL param is empty
+  const clientIdToUse = clientIdFromUrl || MANUAL_FALLBACK_CLIENT_ID;
 
   let clientApp = null;
   let errorType:
@@ -57,13 +45,14 @@ export default async function HomePage({
   if (!clientIdToUse) {
     errorType = "missing_client_id";
     errorMessage =
-      "The client_id parameter is missing from the URL or is invalid. Please ensure you are accessing this page through a valid client application link. If you are testing, ensure a valid MANUAL_FALLBACK_CLIENT_ID is set in src/app/page.tsx or provide a client_id in the URL.";
+      "The client_id parameter is missing from the URL or is invalid. Please ensure you are accessing this page through a valid client application link.";
   } else {
     try {
       console.log(
         `[HomePage] Attempting to fetch client application for clientId: ${clientIdToUse}`
       );
       clientApp = await getClientApplicationByClientId(clientIdToUse);
+
       if (!clientApp) {
         errorType = "invalid_client_id";
         errorMessage = `The provided client_id '${clientIdToUse}' is not recognized or invalid. Please check the link or contact the application provider.`;
@@ -85,7 +74,7 @@ export default async function HomePage({
       }
     } catch (error) {
       console.error("[HomePage] Error fetching client application:", error);
-      errorType = "invalid_client_id"; // Treat fetch errors as invalid client for user
+      errorType = "invalid_client_id";
       errorMessage =
         "Failed to verify client application due to a server error. Please try again later.";
     }

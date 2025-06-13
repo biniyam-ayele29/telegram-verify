@@ -1,55 +1,68 @@
-# 1. Build Stage
-FROM node:22.11.0 AS builder
+# Dockerfile
 
+# ---- Builder Stage ----
+# Use a Node.js LTS version on Alpine Linux for a smaller base image.
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Accept environment file argument
-ARG ENV_FILE
+# Add build arguments for environment variables
+ARG TELEGRAM_BOT_TOKEN
+ARG JWT_SECRET_KEY
 
-# Copy package files first
-COPY package.json package-lock.json ./
+# Set environment variables for build time
+ENV TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+ENV JWT_SECRET_KEY=$JWT_SECRET_KEY
 
-# Install dependencies with npm
-RUN npm install --frozen-lockfile
+# Copy env file first
+COPY .env .env
 
-# Install pnpm globally
-RUN npm install -g pnpm
+# Install dependencies
+# Copy package.json and package-lock.json (if available) first
+# to leverage Docker cache for dependencies.
+COPY package.json ./
+# If you have a package-lock.json, uncomment the next line
+# COPY package-lock.json ./
+# If you use yarn, copy yarn.lock and use 'yarn install --frozen-lockfile'
+# If you use pnpm, copy pnpm-lock.yaml and use 'pnpm install --frozen-lockfile'
+RUN npm install
 
-# Create .dockerignore on the fly to exclude node_modules
-RUN echo "node_modules" > .dockerignore
+# Copy the rest of the application source code.
+# Ensure .dockerignore is properly set up to exclude unnecessary files.
+COPY . .
 
-# Copy application code (explicitly excluding node_modules)
-# First copy source files and config
-COPY src/ ./src/
-# COPY public/ ./public/
-# COPY prisma/ ./prisma/
-COPY *.ts *.json *.js *.mjs ./
-COPY .env* ./
+# Build the Next.js application.
+# The 'output: standalone' in next.config.ts is crucial for this step.
+RUN npm run build
 
-# Apply environment variables if provided
-RUN if [ -n "$ENV_FILE" ]; then cat $ENV_FILE > .env; fi
-
-# Generate Prisma client
-# RUN npx prisma generate
-
-# Build the application with pnpm
-RUN pnpm run build
-
-# 2. Production Stage
-FROM node:22.11.0-alpine AS runner
+# ---- Runner Stage ----
+# Use a Node.js LTS version on Alpine Linux for the final image.
+FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Only copy necessary files for production
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/.next ./.next
+# Add runtime environment variables
+ENV NODE_ENV=production
+ENV TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+ENV JWT_SECRET_KEY=$JWT_SECRET_KEY
+
+# The PORT environment variable will be picked up by Next.js.
+# You can set it to a default here or override it when running the container.
+# ENV PORT=3000
+
+# Copy env file to runtime
+COPY --from=builder /app/.env .env
+
+# Copy the standalone output from the builder stage.
+# This includes the minimal server, node_modules, and other necessary files.
+COPY --from=builder /app/.next/standalone ./
+
+# Copy the static assets and public folder.
+COPY --from=builder /app/.next/static ./.next/static
 # COPY --from=builder /app/public ./public
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/next.config.* ./
-COPY --from=builder /app/.env* ./
 
-# Install production dependencies only
-RUN npm install --only=production
-
+# Expose the port the Next.js app will run on.
+# This should match the PORT environment variable (default 3000 for Next.js).
 EXPOSE 3000
 
-CMD ["npx", "next", "start"]
+# Command to run the Next.js application.
+# 'server.js' is the entry point created by the 'output: standalone' build.
+CMD ["node", "server.js"]
