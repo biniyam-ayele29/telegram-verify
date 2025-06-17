@@ -11,11 +11,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
 import { getClientApplicationByClientId } from "@/lib/client-actions";
 
-// FOR MANUAL TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
+// FOR DEVELOPMENT TESTING: Replace this with an actual client_id from your Firestore 'clientApplications' collection
 // if you want a default client when no client_id is in the URL.
-// Set to undefined or remove if you always want the client_id from the URL.
+// This should be UNDEFINED for production.
 const MANUAL_FALLBACK_CLIENT_ID: string | undefined =
-  "bf4c51f7-064c-430e-b4e2-c39a27985b49";
+  process.env.NODE_ENV === "development" ? "bf4c51f7-064c-430e-b4e2-c39a27985b49" : undefined;
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -40,9 +40,8 @@ export default async function HomePage({
 
   if (
     clientIdToUse === MANUAL_FALLBACK_CLIENT_ID &&
-    !MANUAL_FALLBACK_CLIENT_ID
+    !MANUAL_FALLBACK_CLIENT_ID // This check is effectively: if using fallback AND fallback is undefined (i.e. in prod)
   ) {
-    // If fallback is undefined and URL param is also missing/empty
     clientIdToUse = undefined;
   }
 
@@ -57,34 +56,37 @@ export default async function HomePage({
   if (!clientIdToUse) {
     errorType = "missing_client_id";
     errorMessage =
-      "The client_id parameter is missing from the URL or is invalid. Please ensure you are accessing this page through a valid client application link. If you are testing, ensure a valid MANUAL_FALLBACK_CLIENT_ID is set in src/app/page.tsx or provide a client_id in the URL.";
+      "The client_id parameter is missing from the URL or is invalid. Please ensure you are accessing this page through a valid client application link.";
+      if (process.env.NODE_ENV === "development" && !MANUAL_FALLBACK_CLIENT_ID) {
+        errorMessage += " For testing, ensure a valid MANUAL_FALLBACK_CLIENT_ID is set in src/app/page.tsx for development or provide a client_id in the URL."
+      }
   } else {
     try {
-      console.log(
-        `[HomePage] Attempting to fetch client application for clientId: ${clientIdToUse}`
-      );
+      // console.log(
+      //   `[HomePage] Attempting to fetch client application for clientId: ${clientIdToUse}`
+      // );
       clientApp = await getClientApplicationByClientId(clientIdToUse);
       if (!clientApp) {
         errorType = "invalid_client_id";
         errorMessage = `The provided client_id '${clientIdToUse}' is not recognized or invalid. Please check the link or contact the application provider.`;
-        console.warn(
-          `[HomePage] Client ID ${clientIdToUse} not found or invalid.`
-        );
+        // console.warn(
+        //   `[HomePage] Client ID ${clientIdToUse} not found or invalid.`
+        // );
       } else if (clientApp.status !== "active") {
         errorType = "inactive_client_id";
         errorMessage = `The client application '${
           clientApp?.companyName || clientIdToUse
         }' is currently inactive. Please contact the application provider.`;
-        console.warn(
-          `[HomePage] Client ID ${clientIdToUse} found but is inactive. Company: ${clientApp.companyName}`
-        );
+        // console.warn(
+        //   `[HomePage] Client ID ${clientIdToUse} found but is inactive. Company: ${clientApp.companyName}`
+        // );
       } else {
-        console.log(
-          `[HomePage] Successfully fetched active client: ${clientApp.companyName} (ID: ${clientIdToUse})`
-        );
+        // console.log(
+        //   `[HomePage] Successfully fetched active client: ${clientApp.companyName} (ID: ${clientIdToUse})`
+        // );
       }
     } catch (error) {
-      console.error("[HomePage] Error fetching client application:", error);
+      // console.error("[HomePage] Error fetching client application:", error);
       errorType = "invalid_client_id"; // Treat fetch errors as invalid client for user
       errorMessage =
         "Failed to verify client application due to a server error. Please try again later.";

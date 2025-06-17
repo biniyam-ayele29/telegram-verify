@@ -7,11 +7,24 @@ import { hashPassword } from "../src/lib/auth/utils"; // Adjust path
 import { ADMIN_USERS_COLLECTION } from "../src/lib/auth/config"; // Adjust path
 import { Timestamp } from "firebase-admin/firestore";
 
+// CRITICAL SECURITY WARNING:
+// The password "GA$%dmin5" is a KNOWN DEFAULT.
+// If you run this script, YOU MUST CHANGE THIS PASSWORD IMMEDIATELY
+// in your production environment through a secure admin interface or direct database modification.
+// For production, consider prompting for a password or generating a random one
+// instead of hardcoding it here.
 const ADMIN_USERNAME = "Admin";
-const ADMIN_PASSWORD = "GA$%dmin5";
+const ADMIN_PASSWORD = "GA$%dmin5"; // <<<!!! CRITICAL: CHANGE THIS OR REMOVE HARDCODING !!!>>>
 
 async function seedAdminUser() {
   console.log("Starting admin user seeding...");
+  console.warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  console.warn("CRITICAL SECURITY WARNING: The seed script uses a default admin password.");
+  console.warn(`If this is a production environment, ensure password '${ADMIN_PASSWORD}' for user '${ADMIN_USERNAME}'`);
+  console.warn("is changed IMMEDIATELY after seeding through a secure mechanism.");
+  console.warn("Consider modifying this script to prompt for a password or generate a random one.");
+  console.warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+
 
   if (
     !process.env.FIREBASE_PROJECT_ID ||
@@ -66,8 +79,4 @@ seedAdminUser()
   .catch((err) => {
     console.error("Unhandled error in seeding process:", err);
     process.exit(1);
-<<<<<<< HEAD
-});
-=======
   });
->>>>>>> db01959b4dfc22bc34d0d251db1821812430b11d

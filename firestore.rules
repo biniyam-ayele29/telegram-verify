@@ -1,35 +1,51 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read and write access to the verificationAttempts collection
+
+    // Helper function to simulate an admin check.
+    // IMPORTANT: In a real scenario with Firebase Auth, this would check for a custom claim like:
+    // request.auth.token.admin === true;
+    // The current custom JWT system does NOT populate request.auth.token this way.
+    // Therefore, admin operations must be primarily secured via server actions using the Admin SDK.
+    // These rules serve as a defense-in-depth for direct database access.
+    function isAdmin() {
+      // This is a placeholder. For the current custom JWT, this rule won't effectively gate admins client-side.
+      // Server-side validation in actions is the key.
+      return request.auth != null; // A basic check that user is authenticated (won't work for custom JWT to identify admin)
+    }
+
+    match /adminUsers/{userId} {
+      // Only server actions (using Admin SDK) should modify adminUsers.
+      // Read access might be needed if admin panel showed user details directly from client.
+      allow read, write: if false; // Disallow direct client R/W; admin panel uses server actions.
+    }
+
+    match /clientApplications/{appId} {
+      // Client applications should only be read by admins or via specific server actions.
+      // The homepage (page.tsx) uses a server action to get client details.
+      allow read: if false; // Disallow direct client read. Server action provides necessary data.
+      allow list: if isAdmin(); // Allow admins to list (e.g., in admin panel client-side if needed)
+      allow get: if isAdmin();  // Allow admins to get individual
+      allow write: if isAdmin(); // Admins (via server actions) can write.
+      allow create, update, delete: if isAdmin(); // Admins (via server actions) can manage.
+    }
+
     match /verificationAttempts/{attemptId} {
-      allow read, write: if true;
+      // Verification attempts are managed entirely by server actions using the Admin SDK.
+      // No direct client-side R/W should be needed or allowed.
+      allow read, write, delete: if false;
     }
 
-    // Allow read and write access to the verificationCodes collection
-    match /verificationCodes/{phoneNumber} {
-      allow read, write: if true;
+    match /telegramBotSessions/{chatId} {
+      // Telegram bot sessions are managed entirely by server actions (webhook) using the Admin SDK.
+      // No direct client-side R/W should be needed or allowed.
+      allow read, write, delete: if false;
     }
 
-    // Allow read and write access to the awaitingPhoneNumberChats collection
-    match /awaitingPhoneNumberChats/{chatDocId} {
-      allow read, write: if true;
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
     }
-
-    // Allow read and write access to the telegramBotSessions collection
-    match /telegramBotSessions/{sessionId} {
-      allow read, write: if true;
-    }
-
-    // Allow read access to client applications collection
-    match /clientApplications/{clientId} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-
-    // You might want to deny access to other collections by default
-    // match /{document=**} {
-    //   allow read, write: if false;
-    // }
   }
 }

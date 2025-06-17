@@ -1,4 +1,2 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {};
-
-module.exports = nextConfig;
+// This file is intentionally left blank as it's being deleted.
+// The active Next.js configuration is in next.config.ts.

@@ -1,7 +1,7 @@
 {
   "indexes": [
     {
-      "collectionGroup": "verificationAttempts",
+      "collection": "verificationAttempts",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -23,7 +23,7 @@
       ]
     },
     {
-      "collectionGroup": "verificationAttempts",
+      "collection": "verificationAttempts",
       "queryScope": "COLLECTION",
       "fields": [
         {
