@@ -40,6 +40,7 @@ export async function sendCodeAction(
   const countryCode = (formData.get("countryCode") as string) ?? "";
   const localPhoneNumber = (formData.get("localPhoneNumber") as string) ?? "";
   const clientId = (formData.get("clientId") as string) ?? "";
+  const userAppId = (formData.get("userAppId") as string) ?? "";
 
   if (!clientId) {
      console.error("[sendCodeAction] Client ID is missing from form data.");
@@ -49,6 +50,16 @@ export async function sendCodeAction(
        toastMessage: "An error occurred: Client ID missing.",
      };
   }
+
+  if (!userAppId) {
+    console.error("[sendCodeAction] User App ID is missing from form data.");
+    return {
+      success: false,
+      message: "User identifier (user_app_id) from your application is missing. Cannot proceed.",
+      toastMessage: "An error occurred: User App ID missing.",
+    };
+  }
+
 
   const validatedPartialPhone = PartialPhoneSchema.safeParse({ countryCode, localPhoneNumber });
   if (!validatedPartialPhone.success) {
@@ -65,7 +76,7 @@ export async function sendCodeAction(
   }
 
   const fullPhoneNumber = `${validatedPartialPhone.data.countryCode}${validatedPartialPhone.data.localPhoneNumber}`;
-  console.log(`[sendCodeAction] Processing website phone number: ${fullPhoneNumber} for clientId: ${clientId}`);
+  console.log(`[sendCodeAction] Processing website phone number: ${fullPhoneNumber} for clientId: ${clientId}, userAppId: ${userAppId}`);
 
   const validationResult = FullPhoneNumberSchema.safeParse(fullPhoneNumber);
   if (!validationResult.success) {
@@ -82,7 +93,7 @@ export async function sendCodeAction(
 
   try {
     const aiResponse: GenerateVerificationCodeOutput =
-      await generateVerificationCode({ fullPhoneNumber }); // Genkit flow still takes fullPhoneNumber
+      await generateVerificationCode({ fullPhoneNumber }); 
     console.log(
       `[sendCodeAction] AI response for ${fullPhoneNumber}:`,
       JSON.stringify(aiResponse)
@@ -95,26 +106,27 @@ export async function sendCodeAction(
       const newAttempt: VerificationAttempt = {
         id: pendingVerificationId,
         clientId: clientId,
+        userAppId: userAppId, // Store the userAppId
         websitePhoneNumber: fullPhoneNumber,
         code: aiResponse.verificationCode,
         expiresAt: now + CODE_EXPIRATION_MS,
         attemptsRemaining: MAX_VERIFICATION_ATTEMPTS_ON_WEBSITE,
-        telegramChatId: null, // Not yet linked to a Telegram chat
-        status: 'pending',   // Initial status
+        telegramChatId: null, 
+        status: 'pending',   
         createdAt: now,
         updatedAt: now,
       };
 
       await storeVerificationAttempt(newAttempt);
       console.log(
-        `[sendCodeAction] Stored verification attempt in Firestore with id: ${pendingVerificationId} for phone: ${fullPhoneNumber}`
+        `[sendCodeAction] Stored verification attempt in Firestore with id: ${pendingVerificationId} for phone: ${fullPhoneNumber}, userAppId: ${userAppId}`
       );
 
       return {
         success: true,
         message: "Verification process initiated. Redirecting user to get code via Telegram.",
         toastMessage: "Follow instructions on the next page to get your code via Telegram.",
-        redirectUrl: `/verify-telegram?pendingId=${pendingVerificationId}`, // Pass pendingId
+        redirectUrl: `/verify-telegram?pendingId=${pendingVerificationId}`, 
         pendingId: pendingVerificationId,
       };
     } else {
@@ -156,7 +168,7 @@ export async function verifyCodeAction(
   formData: FormData
 ): Promise<ActionFormState> {
   const verificationCode = (formData.get("verificationCode") as string) ?? "";
-  const pendingId = (formData.get("pendingId") as string) ?? ""; // Expect pendingId from the form
+  const pendingId = (formData.get("pendingId") as string) ?? ""; 
 
   console.log(`[verifyCodeAction] Verifying OTP: ${verificationCode} for pendingId: ${pendingId}`);
 
@@ -188,10 +200,12 @@ export async function verifyCodeAction(
        let finalRedirectUrl: string | undefined = undefined;
        if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
            finalRedirectUrl = clientApp.redirectUris[0];
-            // Append pendingId to the redirect URL
             if (finalRedirectUrl) {
                 const url = new URL(finalRedirectUrl);
                 url.searchParams.append("verification_id", pendingId);
+                if (attempt.userAppId) {
+                    url.searchParams.append("user_identifier", attempt.userAppId);
+                }
                 finalRedirectUrl = url.toString();
             }
        }
@@ -256,10 +270,10 @@ export async function verifyCodeAction(
 
     // Code is valid
     await updateVerificationAttempt(pendingId, { status: 'verified', updatedAt: Date.now() });
-    console.log(`[verifyCodeAction] Successfully verified OTP for pendingId: ${pendingId}. Phone: ${attempt.websitePhoneNumber}`);
+    console.log(`[verifyCodeAction] Successfully verified OTP for pendingId: ${pendingId}. Phone: ${attempt.websitePhoneNumber}, UserAppId: ${attempt.userAppId}`);
 
     const clientApp = await getClientApplicationByClientId(attempt.clientId);
-    let finalRedirectUrlWithId: string | undefined = undefined;
+    let finalRedirectUrlWithParams: string | undefined = undefined;
 
     if (clientApp && clientApp.status === 'active' && clientApp.redirectUris && clientApp.redirectUris.length > 0) {
       let baseRedirectUrl = clientApp.redirectUris[0]; 
@@ -267,22 +281,24 @@ export async function verifyCodeAction(
       try {
         const url = new URL(baseRedirectUrl);
         url.searchParams.append("verification_id", pendingId);
-        finalRedirectUrlWithId = url.toString();
-        console.log(`[verifyCodeAction] Appending verification_id. Final redirect URL: ${finalRedirectUrlWithId}`);
+        if (attempt.userAppId) {
+          url.searchParams.append("user_identifier", attempt.userAppId);
+        }
+        finalRedirectUrlWithParams = url.toString();
+        console.log(`[verifyCodeAction] Appending params. Final redirect URL: ${finalRedirectUrlWithParams}`);
       } catch (e) {
         console.error(`[verifyCodeAction] Invalid base redirect URI (${baseRedirectUrl}):`, e);
-        // Fallback to base URL if it's not a valid URL to append params
-        finalRedirectUrlWithId = baseRedirectUrl;
+        finalRedirectUrlWithParams = baseRedirectUrl;
       }
     } else {
-      console.warn(`[verifyCodeAction] Client app not found, inactive, or no redirect URIs for clientId: ${attempt.clientId} on pendingId: ${pendingId}. Cannot perform final redirect or append verification_id.`);
+      console.warn(`[verifyCodeAction] Client app not found, inactive, or no redirect URIs for clientId: ${attempt.clientId} on pendingId: ${pendingId}. Cannot perform final redirect or append params.`);
     }
 
     return {
       success: true,
       message: "Phone number verified successfully! You will be redirected shortly.",
       toastMessage: "Phone number verified successfully! Redirecting...",
-      finalRedirectUrl: finalRedirectUrlWithId,
+      finalRedirectUrl: finalRedirectUrlWithParams,
     };
   } catch (error: any) {
     console.error(

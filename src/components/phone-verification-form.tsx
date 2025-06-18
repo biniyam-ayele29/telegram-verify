@@ -51,9 +51,10 @@ const africanCountries = [
 
 interface PhoneVerificationFormProps {
   clientId: string; 
+  userAppId: string;
 }
 
-export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) {
+export function PhoneVerificationForm({ clientId, userAppId }: PhoneVerificationFormProps) {
   const router = useRouter();
   const { toast } = useToast();
 
@@ -71,8 +72,6 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
   
     if (sendCodeFormState && sendCodeFormState.success && sendCodeFormState.redirectUrl) {
       let urlToRedirect = sendCodeFormState.redirectUrl;
-      // The redirectUrl from sendCodeAction will now be like /verify-telegram?pendingId=...
-      // No need to append clientId here as it will be stored in the pending verification document.
       const toastMsg = sendCodeFormState.toastMessage;
   
       console.log(`[PhoneVerificationForm SUCCESS_EFFECT] Conditions met. Toast: "${toastMsg}". Attempting to redirect to: "${urlToRedirect}"`);
@@ -139,7 +138,8 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
     <Form {...phoneForm}>
       <form 
         action={(formData) => {
-          formData.append("clientId", clientId); // Append clientId to the form data
+          formData.append("clientId", clientId); 
+          formData.append("userAppId", userAppId); 
           sendCodeFormAction(formData);
         }} 
         className="space-y-6"
@@ -208,3 +208,4 @@ export function PhoneVerificationForm({ clientId }: PhoneVerificationFormProps) 
     </Form>
   );
 }
+

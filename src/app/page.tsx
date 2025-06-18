@@ -1,3 +1,4 @@
+
 import { PhoneVerificationForm } from "@/components/phone-verification-form";
 import { TeleVerifyLogo } from "@/components/icons/logo";
 import {
@@ -17,6 +18,12 @@ import { getClientApplicationByClientId } from "@/lib/client-actions";
 const MANUAL_FALLBACK_CLIENT_ID: string | undefined =
   process.env.NODE_ENV === "development" ? "bf4c51f7-064c-430e-b4e2-c39a27985b49" : undefined;
 
+// FOR DEVELOPMENT TESTING: You can provide a fallback user_app_id for development here.
+// This should be UNDEFINED for production.
+const MANUAL_FALLBACK_USER_APP_ID: string | undefined =
+  process.env.NODE_ENV === "development" ? "test-user-123" : undefined;
+
+
 type SearchParams = { [key: string]: string | string[] | undefined };
 
 export default async function HomePage({
@@ -24,70 +31,62 @@ export default async function HomePage({
 }: {
   searchParams: SearchParams;
 }) {
-  // Ensure searchParams is an object and handle potential undefined
   const params = searchParams ?? {};
 
-  // Handle both string and string[] cases for client_id
+  // Handle client_id
   const rawClientId = params.client_id;
-  const clientIdFromUrl = Array.isArray(rawClientId)
-    ? rawClientId[0]
-    : rawClientId;
-
-  let clientIdToUse =
-    typeof clientIdFromUrl === "string" && clientIdFromUrl.trim() !== ""
-      ? clientIdFromUrl
-      : MANUAL_FALLBACK_CLIENT_ID;
-
-  if (
-    clientIdToUse === MANUAL_FALLBACK_CLIENT_ID &&
-    !MANUAL_FALLBACK_CLIENT_ID // This check is effectively: if using fallback AND fallback is undefined (i.e. in prod)
-  ) {
+  const clientIdFromUrl = Array.isArray(rawClientId) ? rawClientId[0] : rawClientId;
+  let clientIdToUse = typeof clientIdFromUrl === "string" && clientIdFromUrl.trim() !== ""
+    ? clientIdFromUrl
+    : MANUAL_FALLBACK_CLIENT_ID;
+  if (clientIdToUse === MANUAL_FALLBACK_CLIENT_ID && !MANUAL_FALLBACK_CLIENT_ID) {
     clientIdToUse = undefined;
   }
 
+  // Handle user_app_id
+  const rawUserAppId = params.user_app_id;
+  const userAppIdFromUrl = Array.isArray(rawUserAppId) ? rawUserAppId[0] : rawUserAppId;
+  let userAppIdToUse = typeof userAppIdFromUrl === "string" && userAppIdFromUrl.trim() !== ""
+    ? userAppIdFromUrl
+    : MANUAL_FALLBACK_USER_APP_ID;
+  if (userAppIdToUse === MANUAL_FALLBACK_USER_APP_ID && !MANUAL_FALLBACK_USER_APP_ID) {
+    userAppIdToUse = undefined;
+  }
+
+
   let clientApp = null;
   let errorType:
-    | "missing_client_id"
+    | "missing_params"
     | "invalid_client_id"
     | "inactive_client_id"
     | null = null;
   let errorMessage = "An unknown error occurred.";
 
-  if (!clientIdToUse) {
-    errorType = "missing_client_id";
+  if (!clientIdToUse || !userAppIdToUse) {
+    errorType = "missing_params";
+    let missingFields = [];
+    if (!clientIdToUse) missingFields.push("client_id");
+    if (!userAppIdToUse) missingFields.push("user_app_id");
+    
     errorMessage =
-      "The client_id parameter is missing from the URL or is invalid. Please ensure you are accessing this page through a valid client application link.";
-      if (process.env.NODE_ENV === "development" && !MANUAL_FALLBACK_CLIENT_ID) {
-        errorMessage += " For testing, ensure a valid MANUAL_FALLBACK_CLIENT_ID is set in src/app/page.tsx for development or provide a client_id in the URL."
+      `The following required parameters are missing or invalid: ${missingFields.join(', ')}. Please ensure you are accessing this page through a valid client application link.`;
+      if (process.env.NODE_ENV === "development" && (!MANUAL_FALLBACK_CLIENT_ID || !MANUAL_FALLBACK_USER_APP_ID)) {
+        errorMessage += " For testing, ensure valid fallbacks (MANUAL_FALLBACK_CLIENT_ID, MANUAL_FALLBACK_USER_APP_ID) are set in src/app/page.tsx or provide them in the URL."
       }
   } else {
     try {
-      // console.log(
-      //   `[HomePage] Attempting to fetch client application for clientId: ${clientIdToUse}`
-      // );
       clientApp = await getClientApplicationByClientId(clientIdToUse);
       if (!clientApp) {
         errorType = "invalid_client_id";
         errorMessage = `The provided client_id '${clientIdToUse}' is not recognized or invalid. Please check the link or contact the application provider.`;
-        // console.warn(
-        //   `[HomePage] Client ID ${clientIdToUse} not found or invalid.`
-        // );
       } else if (clientApp.status !== "active") {
         errorType = "inactive_client_id";
         errorMessage = `The client application '${
           clientApp?.companyName || clientIdToUse
         }' is currently inactive. Please contact the application provider.`;
-        // console.warn(
-        //   `[HomePage] Client ID ${clientIdToUse} found but is inactive. Company: ${clientApp.companyName}`
-        // );
-      } else {
-        // console.log(
-        //   `[HomePage] Successfully fetched active client: ${clientApp.companyName} (ID: ${clientIdToUse})`
-        // );
       }
     } catch (error) {
-      // console.error("[HomePage] Error fetching client application:", error);
-      errorType = "invalid_client_id"; // Treat fetch errors as invalid client for user
+      errorType = "invalid_client_id"; 
       errorMessage =
         "Failed to verify client application due to a server error. Please try again later.";
     }
@@ -96,8 +95,8 @@ export default async function HomePage({
   const renderError = () => {
     let title = "Authentication Error";
     switch (errorType) {
-      case "missing_client_id":
-        title = "Client ID Missing or Invalid";
+      case "missing_params":
+        title = "Required Parameters Missing";
         break;
       case "invalid_client_id":
         title = "Invalid Client ID";
@@ -141,8 +140,7 @@ export default async function HomePage({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Pass clientIdToUse to the form, ensuring it's not undefined */}
-              <PhoneVerificationForm clientId={clientIdToUse!} />
+              <PhoneVerificationForm clientId={clientIdToUse!} userAppId={userAppIdToUse!} />
             </CardContent>
           </Card>
         )}
@@ -154,3 +152,4 @@ export default async function HomePage({
     </main>
   );
 }
+

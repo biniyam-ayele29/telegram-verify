@@ -7,6 +7,7 @@ import { z } from "zod";
 export interface VerificationAttempt {
   id: string; // The pendingVerificationId, also the Firestore document ID
   clientId: string; // Client App ID that initiated this request
+  userAppId: string; // The user ID from the client application
   websitePhoneNumber: string; // Phone number entered on the website
   code: string; // The OTP
   expiresAt: number; // Store as number (Unix timestamp in milliseconds)
@@ -75,3 +76,4 @@ export const VerificationCodeSchema = z
 // );
 // export const verificationStore = new Map<string, VerificationAttempt>();
 // This was already removed as we moved to Firestore for verificationAttempts.
+
